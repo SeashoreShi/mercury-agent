@@ -8,12 +8,14 @@ import { ActionResult } from "~/components/indicators/Activity";
 import { Attachments } from "~/components/Attachments";
 import { ThoughtProcess } from "~/components/ThoughtProcess";
 import { cx } from "~/lib/cx";
+import { UserAvatar, useDisplayName } from "~/components/UserAvatar";
+import { usePulse } from "~/app/pulse";
 
 /**
  * One entry in a conversation. Each kind the runtime stores gets its own
  * rendering:
- *  - user          a short heading-weight line, no bubble
- *  - assistant     prose (markdown) beside the mark
+ *  - user          your avatar and name, then a heading-weight line, no bubble
+ *  - assistant     the mark and Mercury's name, then prose (markdown)
  *  - tool-call     a collapsed "used N tools" row; open it for each call
  *  - system        a muted note
  */
@@ -23,10 +25,14 @@ export const Message = memo(function Message({ message }: { message: ChatMessage
     // "(Attached: a.png)" is the runtime's text for a files-only turn; the files say it better.
     const text = files.length > 0 && /^\(Attached: .*\)$/.test(message.content.trim()) ? "" : message.content;
     return (
-      <div className="group flex flex-col gap-3 pl-10 pt-2">
-        {files.length > 0 && <Attachments items={files} />}
-        {text && <p className="whitespace-pre-wrap text-lg font-medium leading-[1.55] tracking-[-0.01em] text-ink" data-selectable>{text}</p>}
-        <MessageMeta timestamp={message.timestamp} />
+      <div className="group flex gap-4 pt-2">
+        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center" aria-hidden="true"><UserAvatar size={24} /></span>
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <Speaker who="you" />
+          {files.length > 0 && <Attachments items={files} />}
+          {text && <p className="whitespace-pre-wrap text-lg font-medium leading-[1.55] tracking-[-0.01em] text-ink" data-selectable>{text}</p>}
+          <MessageMeta timestamp={message.timestamp} />
+        </div>
       </div>
     );
   }
@@ -42,8 +48,9 @@ export const Message = memo(function Message({ message }: { message: ChatMessage
   }
   return (
     <div className="group flex gap-4">
-      <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center" aria-hidden="true"><Mark size={22} /></span>
+      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center" aria-hidden="true"><Mark size={22} /></span>
       <div className="min-w-0 flex-1">
+        <Speaker who="mercury" />
         {message.trace && <ThoughtProcess trace={message.trace} />}
         {message.steps && message.steps.length > 0 && (
           <div className="mb-3 flex flex-col gap-1">
@@ -56,6 +63,17 @@ export const Message = memo(function Message({ message }: { message: ChatMessage
     </div>
   );
 });
+
+/** Who is speaking: a small name line beside the avatar, so turns never blur together. */
+function Speaker({ who }: { who: "you" | "mercury" }) {
+  const you = useDisplayName();
+  const agent = usePulse((s) => s.agentName);
+  return (
+    <div className={cx("flex h-6 items-center text-sm font-semibold", who === "you" ? "text-ink2" : "mb-1.5 text-ink")}>
+      {who === "you" ? you : agent || "Mercury"}
+    </div>
+  );
+}
 
 /** Time and copy, shown on hover so the conversation stays quiet. */
 function MessageMeta({ timestamp, copy }: { timestamp: string; copy?: string }) {
@@ -140,8 +158,9 @@ function ToolActivity({ content }: { content: string }) {
 export function StreamingMessage({ text, live }: { text: string; live: ThoughtTrace | null }) {
   return (
     <div className="flex gap-4">
-      <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center" aria-hidden="true"><Mark size={22} /></span>
+      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center" aria-hidden="true"><Mark size={22} /></span>
       <div className="min-w-0 flex-1">
+        <Speaker who="mercury" />
         {live && <ThoughtProcess trace={live} live={!text} />}
         {text && <><Markdown text={text} streaming /><StreamCaret /></>}
       </div>
