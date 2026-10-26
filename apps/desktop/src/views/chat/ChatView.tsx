@@ -9,6 +9,7 @@ import { StateLabel } from "~/components/indicators/StateOrb";
 import { Approval } from "~/components/indicators/Approval";
 import { ThinkingDots } from "~/components/indicators/Thinking";
 import { ThreadList } from "./ThreadList";
+import { Mark } from "~/components/Logo";
 import { Message, StreamingMessage } from "./Message";
 import { Composer } from "./Composer";
 
@@ -132,10 +133,16 @@ export function ChatView({ mode, header }: { mode: "chat" | "code"; header?: Rea
 
 function EmptyPrompt({ mode }: { mode: "chat" | "code" }) {
   return (
-    <div className="flex flex-col items-center gap-2 px-6 pb-24 text-center">
-      <div className="text-2xl font-medium tracking-tight text-ink">{mode === "code" ? "What should we build?" : "What's on your mind?"}</div>
+    <div className="flex flex-col items-center gap-4 px-6 pb-24 text-center">
+      <div className="relative flex items-center justify-center">
+        <span aria-hidden="true" className="absolute h-28 w-28 rounded-full animate-breathe" style={{ background: "radial-gradient(closest-side, rgb(var(--glow) / 0.22), rgb(var(--glow) / 0))" }} />
+        <Mark size={64} className="relative" />
+      </div>
+      <h2 className="text-2xl font-bold tracking-tight text-ink">Mercury Agent</h2>
       <p className="max-w-[460px] text-base text-ink3">
-        {mode === "code" ? "Mercury works in your workspace: reads, edits, runs, and asks before anything that can't be undone." : "Ask, delegate, or think out loud. Mercury remembers what matters."}
+        {mode === "code"
+          ? "What should we build? Mercury works in your workspace: reads, edits, runs, and asks before anything that can't be undone."
+          : "This chat is empty. Ask, delegate, or think out loud. Mercury remembers what matters."}
       </p>
     </div>
   );
