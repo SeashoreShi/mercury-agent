@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../../ui/src/*"]
+    },
+    "types": ["vite/client"]
+  },
+  "include": ["src", "../../ui/src"],
+  "exclude": ["../../ui/src/**/*.test.ts", "../../ui/src/**/*.test.tsx", "src-tauri", "dist", "node_modules"]
+}
