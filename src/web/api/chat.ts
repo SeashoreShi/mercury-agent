@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { scopedProgrammingState } from '../../core/programming-mode.js';
+import { isInsideWorkspace } from './workspace-ide.js';
 import { storeInlineAttachments, attachmentRefs, resolveUploadRef, uploadMime } from './uploads.js';
 import type { WebChannel } from '../../channels/web.js';
 import type { ProgrammingMode, ProgrammingModeState } from '../../core/programming-mode.js';
@@ -502,7 +503,7 @@ chat.get('/api/workspace/tree', (c) => {
   const targetDir = subPath ? resolve(rootDir, subPath) : rootDir;
 
   // Security: ensure target is within workspace
-  if (!targetDir.startsWith(rootDir)) {
+  if (!isInsideWorkspace(targetDir, rootDir)) {
     return c.json({ error: 'Path outside workspace' }, 403);
   }
 
@@ -556,7 +557,7 @@ chat.get('/api/workspace/file', (c) => {
   const fullPath = resolve(rootDir, filePath);
 
   // Security: ensure within workspace
-  if (!fullPath.startsWith(rootDir)) {
+  if (!isInsideWorkspace(fullPath, rootDir)) {
     return c.json({ error: 'Path outside workspace' }, 403);
   }
 
