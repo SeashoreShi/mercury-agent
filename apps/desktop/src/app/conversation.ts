@@ -23,6 +23,9 @@ export interface ConversationState {
   prompts: PendingPrompt[];
   /** The current turn's thought process, streaming. */
   live: ThoughtTrace | null;
+  /** The stop button was pressed and the runtime hasn't confirmed yet. */
+  stopping: boolean;
+  setStopping(stopping: boolean): void;
   setLive(update: (live: ThoughtTrace) => ThoughtTrace): void;
   clearLive(): void;
   setActive(id: string | null): void;
@@ -50,9 +53,11 @@ function makeConversation(surface: Surface): ConversationStore {
     step: null,
     prompts: [],
     live: null,
+    stopping: false,
+    setStopping: (stopping) => set({ stopping }),
     setLive: (update) => set((s) => ({ live: update(s.live ?? { reasoning: "", steps: [], startedAt: Date.now() }) })),
     clearLive: () => set({ live: null }),
-    setActive: (activeId) => set({ activeId, prompts: [], step: null, agent: "idle", live: null }),
+    setActive: (activeId) => set({ activeId, prompts: [], step: null, agent: "idle", live: null, stopping: false }),
     setMessages: (messages) => set({ messages }),
     addMessage: (message) => set((s) => ({ messages: [...s.messages, message] })),
     appendStreaming: (text) => set((s) => ({ streaming: s.streaming + text })),

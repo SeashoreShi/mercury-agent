@@ -1,11 +1,11 @@
-import { ArrowUp, ChevronDown, Paperclip, Shield, ShieldCheck, X } from "lucide-react";
+import { ArrowUp, ChevronDown, Paperclip, Shield, ShieldCheck, Square, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cx } from "~/lib/cx";
 import * as api from "~/api/mercury";
 import type { ChatSettings, ModelsResponse } from "~/api/types";
 import { useRuntimeState } from "~/app/store";
-import { sendMessage, type CodeTurn } from "~/app/events";
-import { useConversation, type Surface } from "~/app/conversation";
+import { sendMessage, stopTurn, type CodeTurn } from "~/app/events";
+import { useConversation, useConversationStore, type Surface } from "~/app/conversation";
 import { Button } from "~/components/ui/Button";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "~/components/ui/Menu";
 import { Tooltip } from "~/components/ui/Tooltip";
@@ -57,6 +57,8 @@ export function Composer({ surface, placeholder, code, extra, blockedReason, mon
   const ref = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const agent = useConversation((s) => s.agent);
+  const stopping = useConversation((s) => s.stopping);
+  const convStore = useConversationStore();
   const connected = useRuntimeState((s) => s.connected);
 
   useEffect(() => {
@@ -140,6 +142,12 @@ export function Composer({ surface, placeholder, code, extra, blockedReason, mon
   }
 
   const busy = agent === "thinking" || agent === "streaming" || agent === "working";
+  // While Mercury works the send button is a stop button; typing a follow-up turns it back into send.
+  const showStop = busy && text.trim().length === 0 && files.length === 0;
+  function stop() {
+    setError(null);
+    void stopTurn(convStore).catch((err) => setError(err instanceof Error ? `Couldn't stop: ${err.message}` : "Couldn't stop"));
+  }
   const canSend = connected && !blockedReason && (text.trim().length > 0 || files.length > 0);
 
   return (
@@ -182,6 +190,7 @@ export function Composer({ surface, placeholder, code, extra, blockedReason, mon
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
               if (e.key === "Escape" && text) { e.preventDefault(); setText(""); }
+              else if (e.key === "Escape" && busy) { e.preventDefault(); stop(); }
               if (e.key === "Tab" && e.shiftKey && onCycleMode) { e.preventDefault(); onCycleMode(); }
             }}
             placeholder={!connected ? "Waiting for Mercury…" : blockedReason ?? placeholder}
@@ -210,15 +219,23 @@ export function Composer({ surface, placeholder, code, extra, blockedReason, mon
             {surface === "chat" && <ModePicker />}
             <div className="flex-1" />
             {busy ? (
-              <span className="mr-2 text-xs text-ink4">{agent === "streaming" ? "Answering" : agent === "working" ? "Working" : "Thinking"}…</span>
+              <span className="mr-2 text-xs text-ink4">{stopping ? "Stopping" : agent === "streaming" ? "Answering" : agent === "working" ? "Working" : "Thinking"}…</span>
             ) : text.length > 0 ? (
               <span className="mr-2 hidden text-2xs text-ink4 sm:inline">⇧↵ new line</span>
             ) : null}
-            <Tooltip label="Send" shortcut="↵" side="top">
-              <Button variant="primary" size="md" icon onClick={() => void submit()} disabled={!canSend} loading={sending} aria-label="Send" className="!rounded-full">
-                <ArrowUp size={17} strokeWidth={2.4} />
-              </Button>
-            </Tooltip>
+            {showStop ? (
+              <Tooltip label={stopping ? "Stopping…" : "Stop"} shortcut="esc" side="top">
+                <Button variant="primary" size="md" icon onClick={stop} disabled={stopping || !connected} aria-label="Stop" className="!rounded-full">
+                  <Square size={13} className="fill-current" strokeWidth={0} />
+                </Button>
+              </Tooltip>
+            ) : (
+              <Tooltip label="Send" shortcut="↵" side="top">
+                <Button variant="primary" size="md" icon onClick={() => void submit()} disabled={!canSend} loading={sending} aria-label="Send" className="!rounded-full">
+                  <ArrowUp size={17} strokeWidth={2.4} />
+                </Button>
+              </Tooltip>
+            )}
           </div>
         </div>
       </div>

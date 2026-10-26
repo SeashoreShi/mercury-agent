@@ -1,4 +1,4 @@
-import { Check, ChevronRight, Copy, Wrench } from "lucide-react";
+import { Check, ChevronRight, Copy, Square, Wrench } from "lucide-react";
 import { memo, useState } from "react";
 import type { ChatMessage, ThoughtTrace } from "~/api/types";
 import { Mark } from "~/components/Logo";
@@ -8,6 +8,7 @@ import { ActionResult } from "~/components/indicators/Activity";
 import { Attachments } from "~/components/Attachments";
 import { ThoughtProcess } from "~/components/ThoughtProcess";
 import { cx } from "~/lib/cx";
+import { isStopNote } from "~/app/events";
 import { UserAvatar, useDisplayName } from "~/components/UserAvatar";
 import { usePulse } from "~/app/pulse";
 
@@ -46,6 +47,9 @@ export const Message = memo(function Message({ message }: { message: ChatMessage
       </div>
     );
   }
+  // Stopped turns: from this session (message.stopped) or from history (the runtime's note).
+  const stopped = message.stopped || isStopNote(message.content);
+  const body = stopped && isStopNote(message.content) ? "" : message.content;
   return (
     <div className="group flex gap-4">
       <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center" aria-hidden="true"><Mark size={22} /></span>
@@ -57,12 +61,23 @@ export const Message = memo(function Message({ message }: { message: ChatMessage
             {message.steps.map((s, i) => <ActionResult key={i} tool={s.tool} status={s.status} detail={s.result} />)}
           </div>
         )}
-        <Markdown text={message.content} />
-        <MessageMeta timestamp={message.timestamp} copy={message.content} />
+        {body && <Markdown text={body} />}
+        {stopped && <StoppedMarker partial={!!body} />}
+        <MessageMeta timestamp={message.timestamp} copy={body || undefined} />
       </div>
     </div>
   );
 });
+
+/** The honest end of a stopped turn: nothing after this was done. */
+function StoppedMarker({ partial }: { partial: boolean }) {
+  return (
+    <div className={cx("flex items-center gap-2 text-sm text-ink3", partial && "mt-3")}>
+      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-ink/[0.07]"><Square size={9} className="fill-current" aria-hidden="true" /></span>
+      {partial ? "Stopped by you. The answer above is incomplete." : "Stopped by you before an answer was written."}
+    </div>
+  );
+}
 
 /** Who is speaking: a small name line beside the avatar, so turns never blur together. */
 function Speaker({ who }: { who: "you" | "mercury" }) {
@@ -155,13 +170,14 @@ function ToolActivity({ content }: { content: string }) {
 }
 
 /** The answer being written, with its thought process above it (open while it runs). */
-export function StreamingMessage({ text, live }: { text: string; live: ThoughtTrace | null }) {
+export function StreamingMessage({ text, live, stopping = false }: { text: string; live: ThoughtTrace | null; stopping?: boolean }) {
   return (
     <div className="flex gap-4">
       <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center" aria-hidden="true"><Mark size={22} /></span>
       <div className="min-w-0 flex-1">
         <Speaker who="mercury" />
-        {live && <ThoughtProcess trace={live} live={!text} />}
+        {live && <ThoughtProcess trace={live} live={!text} stopping={stopping} />}
+        {stopping && text && <div className="mb-2 text-sm text-ink3">Stopping…</div>}
         {text && <><Markdown text={text} streaming /><StreamCaret /></>}
       </div>
     </div>

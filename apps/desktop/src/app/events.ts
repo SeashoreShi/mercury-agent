@@ -123,6 +123,8 @@ function handleEvent(store: ConversationStore, event: string, raw: string): void
       break;
     case "text_done": {
       const text = String(data.fullText ?? data.text ?? raw);
+      // The runtime's reply to a stop is its "⏹ Task stopped" note: end the turn as stopped.
+      if (isStopNote(text) || (store.getState().stopping && !text.trim())) { finishStopped(store); void refreshThreads(); break; }
       const live = store.getState().live;
       const trace = live && (live.reasoning || live.steps.length) ? { ...live, endedAt: Date.now(), steps: live.steps.map((st) => st.status === "running" ? { ...st, status: "done" as const, endedAt: Date.now() } : st) } : undefined;
       conv.clearStreaming();
@@ -153,6 +155,7 @@ function handleEvent(store: ConversationStore, event: string, raw: string): void
       conv.setStep(null);
       conv.setAgent("idle");
       conv.addMessage({ id: crypto.randomUUID(), role: "system", content: message, timestamp: new Date().toISOString() });
+      conv.setStopping(false);
       break;
     }
     default:
@@ -242,6 +245,51 @@ export async function sendMessage(surface: Surface, content: string, attachments
   store.getState().setLive(() => ({ reasoning: "", steps: [], startedAt: Date.now() }));
   await api.chat.send(content, id, attachments.map(({ name, data }) => ({ name, data })), code ? { programming: code.mode, cwd: code.folder ?? undefined } : undefined);
   void refreshThreads();
+}
+
+/** The note the runtime sends back when a turn is stopped (agent.ts, "⏹ Task stopped. …"). */
+export function isStopNote(text: string): boolean {
+  return /^\s*⏹\s*Task (stopped|halted)\b/.test(text);
+}
+
+/**
+ * Stop button. Marks what was running as stopped straight away (so the
+ * screen never claims a step finished), asks the runtime to stop, and ends
+ * the turn when its confirmation arrives, or after a few seconds if it
+ * never does (an older runtime, or the turn ended on its own meanwhile).
+ */
+export async function stopTurn(store: ConversationStore): Promise<void> {
+  const s = store.getState();
+  if (s.stopping) return;
+  s.setStopping(true);
+  if (s.live) s.setLive((l) => ({ ...l, steps: l.steps.map((st) => (st.status === "running" ? { ...st, status: "stopped" as const, endedAt: Date.now() } : st)) }));
+  try {
+    await api.chat.stop();
+  } catch (err) {
+    store.getState().setStopping(false);
+    throw err;
+  }
+  setTimeout(() => { if (store.getState().stopping) finishStopped(store); }, 8000);
+}
+
+/** End the current turn as stopped: keep the partial answer, mark the trace, say so. */
+function finishStopped(store: ConversationStore): void {
+  const s = store.getState();
+  const partial = s.streaming;
+  const live = s.live;
+  const now = Date.now();
+  const busy = s.agent === "thinking" || s.agent === "working" || s.agent === "streaming";
+  s.clearStreaming();
+  s.clearLive();
+  s.setStep(null);
+  s.setStopping(false);
+  // Nothing was running any more (the answer finished first): nothing to mark.
+  if (!busy && !partial && !live) return;
+  const trace = live && (live.reasoning || live.steps.length)
+    ? { ...live, stopped: true, endedAt: now, steps: live.steps.map((st) => (st.status === "running" ? { ...st, status: "stopped" as const, endedAt: now } : st)) }
+    : undefined;
+  s.addMessage({ id: crypto.randomUUID(), role: "assistant", content: partial, stopped: true, timestamp: new Date().toISOString(), ...(trace ? { trace } : {}) });
+  s.setAgent(s.prompts.length ? "needs-you" : "idle");
 }
 
 export async function answerPrompt(store: ConversationStore, prompt: PendingPrompt, value: string | null): Promise<void> {

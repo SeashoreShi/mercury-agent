@@ -15,7 +15,7 @@ import providerRoutes from './api/providers.js';
 import configRoutes from './api/config.js';
 import systemRoutes, { setScheduler } from './api/system.js';
 import brainRoutes, { setUserMemory } from './api/brain.js';
-import chatRoutes, { setWebChannel, setProgrammingMode, setModelSwitchCallback, setCurrentProviderCallback, setStatusSnapshotCallback, setSessionRepository, setSessionSyncEnabledCallback } from './api/chat.js';
+import chatRoutes, { setWebChannel, setProgrammingMode, setModelSwitchCallback, setCurrentProviderCallback, setStatusSnapshotCallback, setSessionRepository, setSessionSyncEnabledCallback, setStopCallback } from './api/chat.js';
 import agentRoutes, { setAgentSupervisor, setBackgroundTaskManager } from './api/agents.js';
 import botsRoutes, { setBotManager, setBotsWebhookSecret } from './api/bots.js';
 import spotifyRoutes, { setSpotifyClient } from './api/spotify.js';
@@ -219,6 +219,7 @@ if (spaAvailable) {
 }
 
 export { setShutdownHandler, setMcpManager };
+export { setStopCallback };
 export { updateStatus, setUserMemory, setWebChannel, setScheduler, setAgentSupervisor, setBackgroundTaskManager, setSpotifyClient, setProgrammingMode, setModelSwitchCallback, setCurrentProviderCallback, setStatusSnapshotCallback, setKanbanSupervisor, setKanbanBoardManager, setKanbanProviders, setIDEProviders, setBotManager, setBotsWebhookSecret };
 
 let webServer: ReturnType<typeof createAdaptorServer> | null = null;

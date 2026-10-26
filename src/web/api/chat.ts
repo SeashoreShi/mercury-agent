@@ -64,6 +64,12 @@ export function setCurrentProviderCallback(fn: () => { name: string; model: stri
   currentProviderFn = fn;
 }
 
+let stopFn: (() => Promise<string>) | null = null;
+/** The same stop the terminal's Esc and `/stop` use: abort the running turn, cancel its work entry. */
+export function setStopCallback(fn: () => Promise<string>): void {
+  stopFn = fn;
+}
+
 let statusSnapshotFn: (() => Record<string, unknown>) | null = null;
 
 /** The runtime's live status (model, mode, permissions, tokens…) for the connected frame. */
@@ -267,6 +273,17 @@ chat.put('/api/chat/settings', async (c) => {
 });
 
 // ─── Permission Resolution ───────────────────────────────────
+
+/** Stop button: interrupt whatever Mercury is doing right now. */
+chat.post('/api/chat/stop', async (c) => {
+  if (!stopFn) return c.json({ error: 'Stop is not available on this runtime' }, 503);
+  try {
+    const note = await stopFn();
+    return c.json({ ok: true, note });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
 
 chat.post('/api/chat/permission/:id', async (c) => {
   if (!webChannel) {

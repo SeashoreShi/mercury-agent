@@ -51,6 +51,8 @@ export const chat = {
   deleteThread: (id: string) => http.post<{ deleted: boolean }>(`/api/chat/threads/${encodeURIComponent(id)}/delete`, { confirmSessionId: id }),
   send: (content: string, sessionId?: string, attachments?: Array<{ name: string; data: string }>, code?: { programming: string; cwd?: string }) =>
     http.post<{ sent: boolean; sessionId: string }>("/api/chat/send", { content, sessionId, ...(attachments?.length ? { attachments } : {}), ...(code ?? {}) }),
+  /** Interrupt the running turn (same as /stop). Needs the "chat.stop" feature. */
+  stop: () => http.post<{ ok: boolean; note?: string }>("/api/chat/stop", {}),
   answer: (promptId: string, action: string, targetId?: string) => http.post<{ resolved: boolean }>(`/api/chat/permission/${encodeURIComponent(promptId)}`, { action, targetId }),
   settings: () => http.get<ChatSettings>("/api/chat/settings"),
   updateSettings: (patch: Partial<ChatSettings>) => http.put<ChatSettings>("/api/chat/settings", patch),

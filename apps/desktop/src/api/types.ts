@@ -53,13 +53,16 @@ export interface ChatMessage {
   attachments?: MessageAttachment[];
   /** How the answer was reached (live turns only): reasoning and steps. */
   trace?: ThoughtTrace;
+  /** You stopped this turn; content is whatever was written before that. */
+  stopped?: boolean;
 }
 
 export interface ThoughtStep {
   id: number;
   tool: string;
   label: string;
-  status: "running" | "done" | "error";
+  /** "stopped": cut off by the stop button before it finished. */
+  status: "running" | "done" | "error" | "stopped";
   summary?: string;
   startedAt: number;
   endedAt?: number;
@@ -70,6 +73,8 @@ export interface ThoughtTrace {
   steps: ThoughtStep[];
   startedAt: number;
   endedAt?: number;
+  /** The turn was stopped by you, not finished. */
+  stopped?: boolean;
 }
 
 export interface MessageAttachment {

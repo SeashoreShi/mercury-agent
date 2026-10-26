@@ -37,6 +37,7 @@ export const API_FEATURES: readonly string[] = Object.freeze([
   'voice',             // /api/voice, /api/voice/events, /api/voice/control (Optimus)
   'usage.history',     // GET /api/usage/history?days= — tokens per local day
   'brain.people',      // PATCH/merge persons, person checks, GET /api/brain/graph/v2
+  'chat.stop',         // POST /api/chat/stop — interrupt the running turn (same as /stop)
 ]);
 
 export interface ApiContractInfo {
