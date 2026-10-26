@@ -33,9 +33,9 @@ const DEFAULT_PORT: u16 = 6174;
 
 /// Subcommands the app is allowed to run on the user's behalf. Anything
 /// else is refused; the frontend is not a shell.
-const ALLOWED_SUBCOMMANDS: &[&str] = &["service", "start", "stop", "status", "devices", "--version"];
+const ALLOWED_SUBCOMMANDS: &[&str] = &["service", "start", "stop", "status", "devices", "setup", "--version"];
 
-fn mercury_home() -> PathBuf {
+pub(crate) fn mercury_home() -> PathBuf {
     if let Ok(home) = env::var("MERCURY_HOME") {
         if !home.is_empty() {
             return PathBuf::from(home);
@@ -67,7 +67,7 @@ fn platform() -> &'static str {
 }
 
 /// A Command that never flashes a console window on Windows.
-fn quiet_command(program: &Path) -> Command {
+pub(crate) fn quiet_command(program: &Path) -> Command {
     #[allow(unused_mut)]
     let mut command = Command::new(program);
     #[cfg(windows)]

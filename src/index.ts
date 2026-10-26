@@ -93,7 +93,7 @@ import { ProviderModelFetchError, fetchProviderModelCatalog } from './utils/prov
 import { initCloudTokenStore } from './cloud/token-store.js';
 import { clearCloudRuntimeOnline, markCloudRuntimeOnline } from './cloud/runtime-status.js';
 import { startWebServer, stopWebServer, updateStatus as updateWebStatus, setUserMemory as setWebUserMemory, setWebChannel as setWebWebChannel, setScheduler as setWebScheduler, setAgentSupervisor as setWebSupervisor, setBackgroundTaskManager as setWebBgTasks, setSpotifyClient as setWebSpotify, setProgrammingMode as setWebProgrammingMode, setModelSwitchCallback as setWebModelSwitch, setCurrentProviderCallback as setWebCurrentProvider, setStatusSnapshotCallback as setWebStatusSnapshot, setKanbanSupervisor as setWebKanban, setKanbanBoardManager as setWebBoardManager, setKanbanProviders as setWebKanbanProviders, setIDEProviders as setWebIDEProviders, setSessionRepository as setWebSessions, setSessionSyncEnabledCallback as setWebSessionSyncEnabled, setBotManager as setWebBotManager, setBotsWebhookSecret, setShutdownHandler, setMcpManager as setWebMcpManager } from './web/server.js';
-import { isWebAuthInitialized, setWebPassword, writeAttachToken } from './web/auth.js';
+import { isWebAuthInitialized, setWebPassword, writeAttachToken, initWebAuth } from './web/auth.js';
 import { startLoopLagMonitor } from './utils/loop-lag.js';
 import { McpManager, probeMcpServer, validateMcpConfig, type McpServerStatus } from './capabilities/mcp/index.js';
 import {
@@ -4123,7 +4123,29 @@ program
 program
   .command('setup')
   .description('Re-run the setup wizard (reconfigure)')
-  .action(async () => {
+  .option('--headless', 'No questions: write the minimum config with the dashboard enabled (used by Mercury Desktop)')
+  .option('--owner <name>', 'Owner name for --headless')
+  .option('--agent-name <name>', 'Agent name for --headless')
+  .option('--port <port>', 'Dashboard port for --headless')
+  .option('--json', 'With --headless: print the result as JSON')
+  .action(async (opts: { headless?: boolean; owner?: string; agentName?: string; port?: string; json?: boolean }) => {
+    if (opts.headless) {
+      const { applyHeadlessSetup } = await import('./cli/headless-setup.js');
+      const config = loadConfig();
+      const port = opts.port !== undefined ? Number(opts.port) : undefined;
+      const { changed } = applyHeadlessSetup(config, { owner: opts.owner, agentName: opts.agentName, port });
+      saveConfig(ensureCreatorField(config));
+      // The dashboard password exists from now on; shown once, like the wizard does.
+      const webAuth = initWebAuth();
+      const result = { ok: true, owner: config.identity.owner, agentName: config.identity.name, webPort: config.web.port, changed, username: webAuth.username, password: webAuth.password || null };
+      if (opts.json) {
+        console.log(JSON.stringify(result));
+      } else {
+        console.log(chalk.green(`  ✓ Mercury configured for ${config.identity.owner} · dashboard on port ${config.web.port}`));
+        if (webAuth.password) console.log(`  Dashboard login: ${webAuth.username} / ${webAuth.password}  ${chalk.dim('(shown once; change it in Settings)')}`);
+      }
+      return;
+    }
     if (isSetupComplete()) {
       await configure(loadConfig());
     } else {

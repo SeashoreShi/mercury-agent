@@ -104,7 +104,7 @@ function StartLocalRuntime({ onStarted }: { onStarted: () => void }) {
   async function start() {
     setState("starting");
     try {
-      const out = await desktop.runMercury(["start", "--daemon"]);
+      const out = await desktop.runMercury(["start"]);
       if (out.code !== 0) {
         setState("failed");
         setDetail((out.stderr || out.stdout).trim().slice(0, 400));

@@ -39,6 +39,7 @@ pub fn run() {
             commands::local::detect_local_runtime,
             commands::local::read_attach_token,
             commands::local::run_mercury,
+            commands::installer::install_runtime,
             commands::secrets::secret_get,
             commands::secrets::secret_set,
             commands::secrets::secret_delete,

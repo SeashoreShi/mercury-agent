@@ -54,10 +54,17 @@ The update manifest the app polls is `https://mercuryagent.sh/desktop/latest.jso
 (published from `website/static/desktop/`, the same path as the plugin
 catalog).
 
+## Install from the app
+
+"Install Mercury here" (src-tauri/src/commands/installer.rs) resolves the
+latest runtime release, downloads the binary for this CPU and `web.tar.gz`,
+verifies both against `checksums.txt`, installs into `~/.mercury/bin`, then
+runs `mercury setup --headless --owner <name>`, `mercury service install`
+(optional) and `mercury start`, and attaches. Runtime releases must stay the
+GitHub "latest" release: publish desktop releases with `--latest=false`.
+
 ## Not yet here
 
-- Bundled runtime ("Install Mercury here" card) — next brick, as a Tauri
-  sidecar fetched from the matching Mercury release at build time.
 - QR pairing (`mercury://connect?...` deep link is registered; the phone
   app will emit it).
 - Notifications with actions, the macOS notch capsule, auto-start toggle UI.

@@ -3,6 +3,7 @@ import api, { type HealthInfo } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Wordmark } from "./Wordmark";
 import { AddRemote } from "./AddRemote";
+import { InstallRuntime } from "./InstallRuntime";
 import { desktop, type LocalRuntime } from "./tauri";
 import { LOCAL_CONNECTION_ID, useConnections } from "./connections";
 
@@ -62,7 +63,7 @@ export function Onboarding({ onDone, canCancel }: { onDone: () => void; canCance
     setBusy("start");
     setError(null);
     try {
-      const out = await desktop.runMercury(["start", "--daemon"]);
+      const out = await desktop.runMercury(["start"]);
       if (out.code !== 0) throw new Error((out.stderr || out.stdout).trim() || `mercury start exited with ${out.code}`);
       await new Promise((r) => setTimeout(r, 2500));
       await probe();
@@ -134,15 +135,8 @@ export function Onboarding({ onDone, canCancel }: { onDone: () => void; canCance
           {/* 2 · Install here */}
           <Card>
             <CardTitle>Install Mercury here</CardTitle>
-            <CardBody>For a fresh machine. The app will carry its own copy of the runtime and set it up the way the installer does, then run it as a service.</CardBody>
-            <CardBody muted>Bundled runtime lands in the next build. Until then the one-line installer does the same job:</CardBody>
-            <pre className="rounded-md border border-border bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground" data-selectable>
-              {local.state !== "probing" && local.runtime.platform === "windows"
-                ? "irm https://mercuryagent.sh/install.ps1 | iex"
-                : "curl -fsSL https://mercuryagent.sh/install.sh | sh"}
-            </pre>
-            <div className="flex-1" />
-            <SecondaryButton onClick={() => void desktop.openExternal("https://mercuryagent.sh/docs/getting-started/installation")}>Installation guide</SecondaryButton>
+            <CardBody>For a fresh machine. The app downloads the matching release, verifies it, sets it up the way the installer does, and runs it as a service. No terminal.</CardBody>
+            <InstallRuntime platform={platformLabel} onInstalled={onDone} />
           </Card>
 
           {/* 3 · Remote */}

@@ -31,6 +31,11 @@ tauri-plugin-dialog = "2.8"
 tauri-plugin-log = "2.10"
 # OS keychain for device tokens: Keychain, Credential Manager, Secret Service.
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
+# Runtime installer: GitHub release download, sha256, web.tar.gz.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
+sha2 = "0.10"
+flate2 = "1"
+tar = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "6"

@@ -24,6 +24,17 @@ export interface CommandOutput {
   stderr: string;
 }
 
+export interface InstallProgress {
+  phase: "resolve" | "checksums" | "download" | "extract" | "install" | "done";
+  message: string;
+  percent: number | null;
+}
+
+export interface InstalledRuntime {
+  version: string;
+  binaryPath: string;
+}
+
 const DEV_SECRET_PREFIX = "mercury-desktop-dev-secret:";
 
 export const desktop = {
@@ -51,6 +62,19 @@ export const desktop = {
   runMercury(args: string[]): Promise<CommandOutput> {
     if (!isTauri) return Promise.reject(new Error("Not running inside Mercury Desktop"));
     return invoke<CommandOutput>("run_mercury", { args });
+  },
+
+  /** Download, verify and install the latest runtime into ~/.mercury/bin. */
+  installRuntime(): Promise<InstalledRuntime> {
+    if (!isTauri) return Promise.reject(new Error("Not running inside Mercury Desktop"));
+    return invoke<InstalledRuntime>("install_runtime");
+  },
+
+  /** Subscribe to install progress; resolves to an unsubscribe function. */
+  async onInstallProgress(cb: (p: InstallProgress) => void): Promise<() => void> {
+    if (!isTauri) return () => {};
+    const { listen } = await import("@tauri-apps/api/event");
+    return listen<InstallProgress>("runtime-install-progress", (e) => cb(e.payload));
   },
 
   async secretGet(key: string): Promise<string | null> {
