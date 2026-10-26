@@ -58,6 +58,7 @@ import { BotManager } from './bots/bot-manager.js';
 import { getPluginManager, peekPluginManager, setProviderLookup } from './plugins/manager.js';
 import { setCallLearning, setChannelHost, setDesktopActivityHook, setVoiceBriefing, setWorkStopper } from './plugins/channel-bridge.js';
 import { registerPluginsCli } from './cli/plugins-cli.js';
+import { registerDevicesCli } from './cli/devices-cli.js';
 import { SECOND_BRAIN_UNAVAILABLE_MESSAGE } from './memory/second-brain-db.js';
 import { isSqliteAvailable } from './utils/sqlite-driver.js';
 import { runStorageDoctor } from './utils/storage-doctor.js';
@@ -5017,6 +5018,8 @@ serviceCmd
   .action(() => {
     showServiceStatus();
   });
+
+registerDevicesCli(program);
 
   program
   .command('upgrade')

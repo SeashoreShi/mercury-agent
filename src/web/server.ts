@@ -6,7 +6,9 @@ import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger } from '../utils/logger.js';
 import { authGuard, errorHandler } from './middleware.js';
+import { apiCors } from './cors.js';
 import { initWebAuth, getWebPort } from './auth.js';
+import { loadConfig } from '../utils/config.js';
 import authRoutes from './api/auth.js';
 import statusRoutes, { updateStatus } from './api/status.js';
 import providerRoutes from './api/providers.js';
@@ -31,6 +33,15 @@ export { setSessionSyncEnabledCallback };
 const app = new Hono();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+function readCorsOrigins(): string[] {
+  try {
+    const list = loadConfig().web?.corsOrigins;
+    return Array.isArray(list) ? list.filter((o): o is string => typeof o === 'string') : [];
+  } catch {
+    return [];
+  }
+}
 
 function resolveWebDir(subpath: string): string {
   const envVar = subpath === 'static' ? process.env.MERCURY_WEB_STATIC : process.env.MERCURY_UI_DIR;
@@ -69,6 +80,10 @@ const spaIndexPath = join(uiDir, 'index.html');
 const spaAvailable = existsSync(spaIndexPath);
 
 app.use('*', errorHandler);
+// CORS before the guard: a preflight (OPTIONS) carries no credential and
+// must be answered, not rejected. API routes only; the dashboard itself is
+// same-origin.
+app.use('/api/*', apiCors(readCorsOrigins()));
 app.use('*', authGuard);
 
 // ── API routes (always available) ──
