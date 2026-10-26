@@ -1,0 +1,197 @@
+/* The runtime's API shapes (docs/api-contract.md). */
+
+export interface HealthInfo {
+  ok: boolean;
+  pid: number;
+  version: string;
+  apiVersion?: number;
+  features?: string[];
+  state: string;
+  booting: boolean;
+}
+
+export interface DeviceSummary {
+  id: string;
+  name: string;
+  platform: string;
+  createdAt: string;
+  lastSeenAt: string | null;
+}
+
+export interface PairResponse {
+  token: string;
+  device: DeviceSummary;
+  apiVersion: number;
+  features: string[];
+}
+
+// ── Chat ──
+export interface ChatThread {
+  id: string;
+  title?: string;
+  messages: ChatMessage[];
+  createdAt: string;
+}
+
+export interface ToolStep {
+  tool: string;
+  status: "running" | "done" | "error";
+  result?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  timestamp: string;
+  steps?: ToolStep[];
+}
+
+export type ReasoningLevel = "off" | "low" | "medium" | "high";
+export type ReasoningChoice = ReasoningLevel | "auto";
+
+export interface ModelDescription {
+  label: string;
+  autoLabel: string;
+  customLabel: string | null;
+  group: string;
+  reasoning: ReasoningChoice;
+  reasoningLevels: ReasoningLevel[];
+}
+
+export interface ModelsResponse {
+  current: { name: string; model: string } & ModelDescription;
+  providers: ({ name: string; model: string; available: boolean; isCurrent?: boolean } & ModelDescription)[];
+}
+
+export interface ChatSettings {
+  bypassPermissions: boolean;
+  restrictUser: boolean;
+  workspace: string;
+}
+
+export interface CodeStatus {
+  available: boolean;
+  state: "off" | "plan" | "execute";
+  active: boolean;
+  statusText: string;
+}
+
+/** Prompts the runtime raises mid-turn; answered through POST /api/chat/permission/:id. */
+export interface PendingPrompt {
+  id: string;
+  kind: "permission" | "continue" | "choice";
+  /** Tool/command description (permission), question (continue/choice). */
+  text: string;
+  options: Array<{ value: string; label: string }>;
+  targetId?: string;
+  raisedAt: number;
+}
+
+// ── Bots ──
+export interface BotStatus {
+  id: string;
+  name: string;
+  enabled: boolean;
+  state: "disabled" | "idle" | "queued" | "running" | "paused";
+  activity?: string;
+  lastRunAt?: number;
+  lastRunState?: string;
+  needsYou: boolean;
+  fleetRole?: "lead" | "crew";
+  parent?: string;
+  crewWorking?: number;
+}
+
+export interface BotManifest {
+  id: string;
+  name: string;
+  description?: string;
+  enabled: boolean;
+  fleetRole?: "lead" | "crew";
+  parent?: string;
+  model?: { provider?: string; model?: string };
+  schedules?: Array<{ name: string; cron: string; prompt: string }>;
+  autonomy?: { maxSteps?: number; dailyTokenBudget?: number };
+}
+
+export interface BotRunRecord {
+  runId: string;
+  botId: string;
+  trigger: string;
+  state: string;
+  startedAt: number;
+  durationMs: number;
+  tokensIn: number;
+  tokensOut: number;
+  summary?: string;
+  error?: string;
+  reasonCode?: string;
+}
+
+export interface BotActivityEvent {
+  botId: string;
+  kind: "turn-start" | "step" | "tool" | "turn-end" | "thinking";
+  label: string;
+}
+
+// ── Plugins / MCP / Skills ──
+export type PluginStatus = "available" | "installed" | "enabled" | "disabled" | "update-available" | "incompatible" | "error";
+
+export interface PluginSetting {
+  key: string;
+  label: string;
+  type: string;
+  value?: unknown;
+  description?: string;
+  secret?: boolean;
+  group?: string;
+}
+
+export interface PluginItem {
+  id: string;
+  name: string;
+  description: string;
+  kind: "in-process" | "out-of-process";
+  tier: "official" | "community" | "local";
+  status: PluginStatus;
+  installedVersion?: string;
+  latestVersion?: string;
+  sizeBytes?: number;
+  enabled: boolean;
+  running: boolean;
+  verified: boolean;
+  tools: string[];
+  commands: string[];
+  permissions?: { network: string[]; secrets: string[] };
+  disabled?: { code: string; message: string; at: string };
+  lastError?: string;
+  incompatibleReason?: string;
+  settings?: PluginSetting[];
+  channel?: { type: string; state?: string; detail?: string; account?: string };
+}
+
+export interface McpTool {
+  name: string;
+  qualifiedName?: string;
+  description?: string;
+  allowed?: boolean;
+}
+
+export interface McpServer {
+  id: string;
+  transport: "stdio" | "http";
+  enabled: boolean;
+  state: "disabled" | "connecting" | "connected" | "reconnecting" | "failed";
+  target: string;
+  error: string | null;
+  toolCount: number;
+  tools: McpTool[];
+}
+
+export interface Skill {
+  name: string;
+  path: string;
+  active: boolean;
+  description?: string;
+}

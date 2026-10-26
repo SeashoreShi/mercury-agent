@@ -6,6 +6,8 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -14,10 +16,10 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["../../ui/src/*"]
+      "~/*": ["./src/*"]
     },
     "types": ["vite/client"]
   },
-  "include": ["src", "../../ui/src"],
-  "exclude": ["../../ui/src/**/*.test.ts", "../../ui/src/**/*.test.tsx", "src-tauri", "dist", "node_modules"]
+  "include": ["src"],
+  "exclude": ["src-tauri", "dist", "node_modules"]
 }

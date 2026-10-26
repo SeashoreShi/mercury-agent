@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import api from "@/lib/api";
+import * as api from "~/api/mercury";
+import { Button } from "~/components/ui/Button";
+import { Field, Input } from "~/components/ui/Input";
+import { Switch } from "~/components/ui/Switch";
+import { Mono } from "~/components/ui/bits";
 import { desktop, isTauri, type InstallProgress } from "./tauri";
 import { LOCAL_CONNECTION_ID, useConnections } from "./connections";
 
 /**
- * "Install Mercury here": download the matching runtime release, verify it,
- * put it in ~/.mercury/bin, write the minimum config, register the service
- * and start it — then attach, exactly like the "found here" path.
+ * "Install Mercury here": download the matching release, verify it, put it
+ * in ~/.mercury/bin, write the minimum config, register the service, start
+ * it, attach. The user types a name and clicks once.
  */
 
 type Step = "idle" | "download" | "setup" | "service" | "start" | "done" | "failed";
@@ -29,7 +33,7 @@ export function InstallRuntime({ platform, onInstalled }: { platform: string; on
     setStep("download");
     try {
       unlisten.current = await desktop.onInstallProgress(setProgress);
-      const installed = await desktop.installRuntime();
+      await desktop.installRuntime();
       unlisten.current?.();
       unlisten.current = null;
 
@@ -37,9 +41,9 @@ export function InstallRuntime({ platform, onInstalled }: { platform: string; on
       const setup = await desktop.runMercury(["setup", "--headless", "--owner", owner.trim() || "Owner", "--json"]);
       if (setup.code !== 0) throw new Error(firstLine(setup.stderr || setup.stdout) || "mercury setup failed");
       try {
-        const parsed = JSON.parse(lastJsonLine(setup.stdout)) as { username?: string; password?: string | null; webPort?: number };
+        const parsed = JSON.parse(lastJsonLine(setup.stdout)) as { username?: string; password?: string | null };
         if (parsed.username && parsed.password) setCredentials({ username: parsed.username, password: parsed.password });
-      } catch { /* the wizard's JSON is a courtesy; attach does not need it */ }
+      } catch { /* courtesy only */ }
 
       if (autostart) {
         setStep("service");
@@ -59,12 +63,10 @@ export function InstallRuntime({ platform, onInstalled }: { platform: string; on
         if (Date.now() > deadline) throw new Error("Mercury was installed but did not come up within 30 seconds. Check `mercury logs`.");
         await new Promise((r) => setTimeout(r, 1000));
       }
-
       const name = await desktop.hostname();
       await add({ id: LOCAL_CONNECTION_ID, kind: "local", name, baseUrl });
       await setActive(LOCAL_CONNECTION_ID);
       setStep("done");
-      void installed;
       onInstalled();
     } catch (err) {
       unlisten.current?.();
@@ -77,46 +79,30 @@ export function InstallRuntime({ platform, onInstalled }: { platform: string; on
   const busy = step !== "idle" && step !== "failed" && step !== "done";
 
   return (
-    <div className="flex flex-1 flex-col gap-2.5">
-      <label htmlFor="install-owner" className="font-mono text-[10px] tracking-wider text-muted-foreground">YOUR NAME</label>
-      <input id="install-owner" value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="How Mercury should address you" disabled={busy}
-        className="h-9 rounded-md border border-border bg-background px-3 text-[12.5px] text-foreground outline-none focus:border-primary" />
-      <label className="flex items-center gap-2 text-[12.5px] text-foreground/90">
-        <input type="checkbox" checked={autostart} onChange={(e) => setAutostart(e.target.checked)} disabled={busy} className="h-[15px] w-[15px] accent-[hsl(var(--primary))]" />
-        Start Mercury when I log in
-      </label>
-
+    <div className="flex flex-col gap-3">
+      <Field label="Your name" htmlFor="install-owner" hint="How Mercury should address you.">
+        <Input id="install-owner" value={owner} onChange={(e) => setOwner(e.target.value)} disabled={busy} />
+      </Field>
+      <Switch id="install-autostart" checked={autostart} onCheckedChange={setAutostart} disabled={busy} label="Start Mercury when I log in" />
       {busy && (
-        <div className="rounded-md border border-border bg-background px-3 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
-          <div className="text-foreground/90">{stepLabel(step, progress)}</div>
+        <div className="rounded-md border border-line bg-raised px-3 py-2 text-xs text-ink2">
+          {stepLabel(step, progress)}
           {step === "download" && progress?.percent != null && (
-            <div className="mt-1.5 h-1 w-full overflow-hidden rounded bg-muted"><div className="h-full bg-primary transition-[width]" style={{ width: `${progress.percent}%` }} /></div>
+            <div className="mt-1.5 h-1 w-full overflow-hidden rounded bg-ink/[0.1]"><div className="h-full bg-accent transition-[width]" style={{ width: `${progress.percent}%` }} /></div>
           )}
         </div>
       )}
-      {error && <div className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-[11.5px] text-destructive">{error}</div>}
-      {credentials && (
-        <div className="rounded-md border border-border bg-background px-3 py-2 font-mono text-[11px] text-muted-foreground" data-selectable>
-          Browser login (shown once): <span className="text-foreground">{credentials.username}</span> / <span className="text-foreground">{credentials.password}</span>
-        </div>
-      )}
-
-      <div className="flex-1" />
-      <button onClick={() => void run()} disabled={busy || !isTauri} title={isTauri ? undefined : "Available inside the desktop app"}
-        className="h-10 rounded-lg border border-border bg-muted/40 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-60">
-        {step === "failed" ? "Try again" : busy ? "Installing…" : `Install Mercury on ${platform}`}
-      </button>
+      {error && <div className="rounded-md border border-red/30 bg-red/[0.06] px-2.5 py-1.5 text-xs text-red">{error}</div>}
+      {credentials && <Mono className="block">Browser login (shown once): {credentials.username} / {credentials.password}</Mono>}
+      <Button variant="primary" size="lg" onClick={() => void run()} disabled={busy || !isTauri} loading={busy} title={isTauri ? undefined : "Available inside the desktop app"}>
+        {step === "failed" ? "Try again" : `Install Mercury on ${platform}`}
+      </Button>
     </div>
   );
 }
 
 async function isUp(baseUrl: string): Promise<boolean> {
-  try {
-    const h = await api.health.probe(baseUrl, null, 1500);
-    return h.ok;
-  } catch {
-    return false;
-  }
+  try { return (await api.health.probe(baseUrl, null, 1500)).ok; } catch { return false; }
 }
 
 function stepLabel(step: Step, progress: InstallProgress | null): string {

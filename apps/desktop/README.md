@@ -1,18 +1,26 @@
 # Mercury Desktop
 
-The native desktop app for Mercury: a Tauri 2 shell (Rust, small) around the
-same React dashboard the runtime serves (`../../ui`). The shell owns what a
-browser tab cannot — window and tray, the OS keychain, finding/starting the
-runtime on this computer, deep links, updates — and the dashboard does the
-rest over the runtime's HTTP API.
+The native desktop app for Mercury: a Tauri 2 shell (Rust, small) around a
+React UI built for the desktop — its own components, its own API client.
+Nothing is imported from the runtime-served web dashboard. The shell owns
+what a browser tab cannot (window and tray, the OS keychain, finding and
+starting the runtime on this computer, deep links, updates); the UI talks
+to a runtime over its HTTP API and event streams.
 
 ```
 apps/desktop/
-  src/            the shell's own screens (first run, connections, status)
-  src/shell/      connections store, runtime bring-up, native bridge
-  src-tauri/      Rust: window, tray, keychain, local-runtime detection
-  ../../ui/src    the dashboard, imported as source via the "@" alias
+  src/api/          client (Bearer), SSE stream, endpoint map, types
+  src/app/          App root, stores (view, runtime state, chat, bots), theme, events
+  src/components/   ui primitives · indicators (StateOrb, Thinking, Approval, Activity) · Markdown · Logo
+  src/layout/       Rail + Workspace (all views mounted, switched by state: no page loads)
+  src/views/        chat · code · bots · plugins · skills · settings
+  src/shell/        connections store, runtime bring-up, native bridge, first run
+  src-tauri/        Rust: window, tray, keychain, local-runtime detection, installer
 ```
+
+Design: one quiet palette (`src/styles/tokens.css`), light / dark / auto, a
+single accent the user can tint; amber means "needs you", red means halt,
+cyan means thinking — fixed. Geist and Geist Mono are bundled.
 
 ## How a connection works
 

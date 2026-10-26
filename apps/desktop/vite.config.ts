@@ -4,16 +4,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * Mercury Desktop frontend. The dashboard itself lives in ../../ui/src and
- * is imported here as source (alias "@"), so there is one React UI for the
- * runtime-served dashboard and the desktop app. `dedupe` makes the UI's
- * imports of react/zustand/etc. resolve to THIS package's copies — two
- * React instances would break every hook.
+ * Mercury Desktop frontend. Self-contained: its own components, its own
+ * API client; nothing is imported from the runtime-served web dashboard.
  */
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const uiSrc = path.resolve(here, "../../ui/src");
-const repoRoot = path.resolve(here, "../..");
 
 // `tauri dev` sets TAURI_DEV_HOST when the frontend is served to a device.
 const host = process.env.TAURI_DEV_HOST;
@@ -22,8 +17,7 @@ export default defineConfig({
   plugins: [react()],
   clearScreen: false,
   resolve: {
-    alias: { "@": uiSrc },
-    dedupe: ["react", "react-dom", "react-router-dom", "zustand", "framer-motion", "lucide-react"],
+    alias: { "~": path.resolve(here, "src") },
   },
   server: {
     port: 1420,
@@ -31,7 +25,6 @@ export default defineConfig({
     host: host || false,
     hmr: host ? { protocol: "ws", host, port: 1421 } : undefined,
     watch: { ignored: ["**/src-tauri/**"] },
-    fs: { allow: [repoRoot] },
   },
   envPrefix: ["VITE_", "TAURI_ENV_*"],
   build: {
@@ -41,5 +34,9 @@ export default defineConfig({
     sourcemap: Boolean(process.env.TAURI_ENV_DEBUG),
     outDir: "dist",
     chunkSizeWarningLimit: 900,
+  },
+  test: {
+    environment: "node",
+    include: ["src/**/*.test.ts"],
   },
 });

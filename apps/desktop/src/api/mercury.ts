@@ -1,0 +1,98 @@
+/* ═══════════════════════════════════════════════════════════════
+   The runtime's endpoints the desktop uses. Paths are the contract;
+   see docs/api-contract.md.
+   ═══════════════════════════════════════════════════════════════ */
+
+import { http, ApiError } from "./client";
+import type {
+  BotManifest, BotRunRecord, BotStatus, ChatMessage, ChatSettings, ChatThread, CodeStatus, HealthInfo,
+  McpServer, ModelsResponse, PairResponse, PluginItem, ReasoningChoice, Skill, DeviceSummary,
+} from "./types";
+
+export const health = {
+  get: () => http.get<HealthInfo>("/api/health"),
+  /** Probe any runtime with an explicit token, before it is configured. */
+  probe: async (baseUrl: string, token: string | null, timeoutMs = 5000): Promise<HealthInfo> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/api/health`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: controller.signal });
+      if (!res.ok) throw new ApiError(res.status === 404 || res.status === 401 ? "Unauthorized" : `Health check failed (${res.status})`, res.status);
+      return (await res.json()) as HealthInfo;
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+};
+
+export const auth = {
+  pair: async (baseUrl: string, username: string, password: string, deviceName: string, platform: string): Promise<PairResponse> => {
+    const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/api/auth/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password, deviceName, platform }),
+    });
+    const body = (await res.json().catch(() => ({}))) as Partial<PairResponse> & { error?: string };
+    if (!res.ok) {
+      const retry = res.headers.get("Retry-After");
+      throw new ApiError(body.error || `Pairing failed (${res.status})`, res.status, retry ? Number(retry) : null);
+    }
+    return body as PairResponse;
+  },
+  devices: () => http.get<{ devices: DeviceSummary[]; current: string | null }>("/api/auth/devices"),
+  revokeDevice: (id: string) => http.delete<{ success: boolean }>(`/api/auth/devices/${encodeURIComponent(id)}`),
+  revokeSelf: () => http.post<{ success: boolean }>("/api/auth/token/revoke"),
+};
+
+export const chat = {
+  threads: () => http.get<{ threads: ChatThread[] }>("/api/chat/threads"),
+  thread: (id: string) => http.get<ChatThread>(`/api/chat/threads/${encodeURIComponent(id)}`),
+  createThread: (title?: string) => http.post<ChatThread>("/api/chat/threads", { title }),
+  deleteThread: (id: string) => http.post<{ deleted: boolean }>(`/api/chat/threads/${encodeURIComponent(id)}/delete`, { confirmSessionId: id }),
+  send: (content: string, sessionId?: string) => http.post<{ sent: boolean; sessionId: string }>("/api/chat/send", { content, sessionId }),
+  answer: (promptId: string, action: string, targetId?: string) => http.post<{ resolved: boolean }>(`/api/chat/permission/${encodeURIComponent(promptId)}`, { action, targetId }),
+  settings: () => http.get<ChatSettings>("/api/chat/settings"),
+  updateSettings: (patch: Partial<ChatSettings>) => http.put<ChatSettings>("/api/chat/settings", patch),
+  models: () => http.get<ModelsResponse>("/api/chat/models"),
+  switchModel: (provider: string, model?: string) => http.post<{ ok: boolean; message: string }>("/api/chat/models/switch", { provider, model }),
+  setReasoning: (provider: string, model: string, reasoning: ReasoningChoice | null) => http.post<{ ok: boolean }>("/api/chat/models/prefs", { provider, model, reasoning }),
+};
+
+export const code = {
+  status: () => http.get<CodeStatus>("/api/code/status"),
+  set: (state: "off" | "plan" | "execute") => http.post<{ state: string; active: boolean }>("/api/code/set", { state }),
+};
+
+export const bots = {
+  list: () => http.get<{ bots: BotStatus[]; available: boolean }>("/api/bots"),
+  get: (id: string) => http.get<{ bot: BotManifest; state: BotStatus | null; journal: BotRunRecord[] }>(`/api/bots/${encodeURIComponent(id)}`),
+  message: (id: string, message: string) => http.post<{ accepted: boolean; jobId?: string; reasonCode?: string }>(`/api/bots/${encodeURIComponent(id)}/message`, { message }),
+  enable: (id: string) => http.post<{ ok: boolean }>(`/api/bots/${encodeURIComponent(id)}/enable`),
+  disable: (id: string) => http.post<{ ok: boolean }>(`/api/bots/${encodeURIComponent(id)}/disable`),
+  stop: (id: string) => http.post<{ ok: boolean }>(`/api/bots/${encodeURIComponent(id)}/stop`),
+  run: (id: string) => http.post<{ accepted: boolean }>(`/api/bots/${encodeURIComponent(id)}/run`, {}),
+};
+
+export const plugins = {
+  list: (refresh = false) => http.get<{ items: PluginItem[]; catalogError?: string; stale: boolean; safeMode: boolean }>(`/api/plugins${refresh ? "?refresh=1" : ""}`),
+  install: (source: string) => http.post<{ id: string; name: string; version: string }>("/api/plugins/install", { source }),
+  enable: (id: string) => http.post<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(id)}/enable`),
+  disable: (id: string) => http.post<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(id)}/disable`),
+  update: (id: string) => http.post<{ changed: Array<{ id: string; from: string; to: string }> }>(`/api/plugins/${encodeURIComponent(id)}/update`),
+  uninstall: (id: string) => http.delete<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(id)}`),
+};
+
+export const mcp = {
+  list: () => http.get<{ available: boolean; servers: McpServer[] }>("/api/mcp"),
+};
+
+export const skills = {
+  list: () => http.get<{ skills: Skill[]; total: number }>("/api/skills"),
+  activate: (name: string) => http.post<{ success: boolean }>(`/api/skills/${encodeURIComponent(name)}/activate`),
+  deactivate: (name: string) => http.post<{ success: boolean }>(`/api/skills/${encodeURIComponent(name)}/deactivate`),
+  remove: (name: string) => http.delete<{ success: boolean }>(`/api/skills/${encodeURIComponent(name)}`),
+  installFromRegistry: (id: string) => http.post<{ success: boolean; id: string; version: string; status: string }>("/api/skills/install-from-registry", { id, force: false }),
+  install: (url: string) => http.post<{ success: boolean; name: string }>("/api/skills/install", { url }),
+};
+
+export type { ChatMessage };
