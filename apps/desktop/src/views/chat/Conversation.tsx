@@ -69,9 +69,12 @@ export function Conversation({ header, empty, composer }: { header: ReactNode; e
           stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
           if (el.scrollTop < 160 && hiddenCount > 0 && !prepend.current) loadEarlier();
         }}
-        className={cx("min-h-0 flex-1 overflow-y-auto", isEmpty && "flex items-center justify-center")}
+        className={cx("min-h-0 flex-1 overflow-y-auto", isEmpty && "flex flex-col")}
       >
-        {isEmpty ? empty : (
+        {/* Centred with auto margins, not justify-center: when the start screen
+            is taller than the window, justify-center pushes its top under the
+            header where it can't be scrolled to. Auto margins collapse instead. */}
+        {isEmpty ? <div className="m-auto flex w-full justify-center py-8">{empty}</div> : (
           <div className="mx-auto flex w-full max-w-[780px] flex-col gap-7 px-8 py-8">
             {loading && messages.length === 0 && <ThinkingDots label="Loading" />}
             {hiddenCount > 0 && (
