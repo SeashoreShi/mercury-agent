@@ -16,6 +16,8 @@ import { BotsView } from "~/views/bots/BotsView";
 import { PluginsView } from "~/views/plugins/PluginsView";
 import { SkillsView } from "~/views/skills/SkillsView";
 import { SettingsView } from "~/views/settings/SettingsView";
+import { BrainView } from "~/views/brain/BrainView";
+import { ErrorBoundary } from "~/components/ErrorBoundary";
 
 registerBuiltinStatusItems();
 
@@ -44,12 +46,14 @@ export function Workspace({ connection, health, onSwitchConnection }: { connecti
       <div className="flex min-h-0 flex-1">
         <Rail connectionName={connection.name} />
         <main className="relative flex min-w-0 flex-1 flex-col">
-          <Pane active={view === "chat"}><ChatView /></Pane>
-          <Pane active={view === "code"}><CodeView /></Pane>
-          <Pane active={view === "bots"}><BotsView /></Pane>
-          <Pane active={view === "plugins"}><PluginsView /></Pane>
-          <Pane active={view === "skills"}><SkillsView /></Pane>
-          <Pane active={view === "settings"}><SettingsView connection={connection} health={health} onSwitchConnection={onSwitchConnection} /></Pane>
+          {/* Each view behind its own crash boundary: one broken view never blanks the window. */}
+          <Pane active={view === "chat"}><ErrorBoundary label="Chat"><ChatView /></ErrorBoundary></Pane>
+          <Pane active={view === "code"}><ErrorBoundary label="Mercury Code"><CodeView /></ErrorBoundary></Pane>
+          <Pane active={view === "bots"}><ErrorBoundary label="Bots"><BotsView /></ErrorBoundary></Pane>
+          <Pane active={view === "brain"}><ErrorBoundary label="Brain"><BrainView /></ErrorBoundary></Pane>
+          <Pane active={view === "plugins"}><ErrorBoundary label="Plugins"><PluginsView /></ErrorBoundary></Pane>
+          <Pane active={view === "skills"}><ErrorBoundary label="Skills"><SkillsView /></ErrorBoundary></Pane>
+          <Pane active={view === "settings"}><ErrorBoundary label="Settings"><SettingsView connection={connection} health={health} onSwitchConnection={onSwitchConnection} /></ErrorBoundary></Pane>
         </main>
       </div>
       <StatusBar />

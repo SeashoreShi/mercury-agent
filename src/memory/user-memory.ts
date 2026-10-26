@@ -91,7 +91,7 @@ export interface UserPersonRecord {
 }
 
 // 8: stricter name rules, owner overrides, model checks for new names, beliefs indexed.
-const PERSON_INDEX_VERSION = '8';
+const PERSON_INDEX_VERSION = '9';
 
 export class UserMemoryStore {
   private db: SecondBrainDB;
@@ -738,7 +738,7 @@ const NON_NAME_TOKENS = new Set([
   'and', 'or', 'but', 'if', 'then', 'so', 'because', 'while', 'during', 'after', 'before', 'since', 'until', 'about', 'with', 'without', 'from', 'into', 'onto', 'for', 'of', 'on', 'in', 'at', 'by', 'to', 'as', 'also', 'just', 'only', 'very', 'not', 'no', 'yes', 'all', 'any', 'some', 'each', 'every', 'both', 'more', 'most', 'other', 'another', 'such',
   // common verbs / states that start sentences
   'is', 'are', 'was', 'were', 'be', 'been', 'being', 'has', 'have', 'had', 'do', 'does', 'did', 'can', 'could', 'will', 'would', 'should', 'may', 'might', 'must',
-  'task', 'tasks', 'node', 'active', 'full', 'three', 'two', 'one', 'four', 'five', 'recent', 'card', 'cards', 'vulnerabilities', 'downloads', 'official', 'account', 'developing', 'email', 'jira', 'creating', 'combinator', 'console', 'status', 'ready', 'completed', 'application', 'current', 'multiple', 'part', 'colab', 'includes', 'fork', 'mentioned', 'manages', 'requested', 'form', 'context', 'assigned', 'temp', 'issue', 'issues', 'next', 'real', 'progress', 'write', 'main', 'sub', 'setting', 'successfully', 'maintainers', 'new', 'old', 'first', 'last', 'daily', 'weekly', 'india', 'pakistan', 'search', 'checker', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep',
+  'task', 'tasks', 'node', 'active', 'full', 'three', 'two', 'one', 'four', 'five', 'recent', 'card', 'cards', 'vulnerabilities', 'downloads', 'official', 'account', 'developing', 'email', 'jira', 'creating', 'combinator', 'console', 'status', 'ready', 'completed', 'application', 'current', 'multiple', 'part', 'colab', 'includes', 'fork', 'mentioned', 'manages', 'requested', 'form', 'context', 'assigned', 'temp', 'issue', 'issues', 'next', 'real', 'progress', 'write', 'main', 'sub', 'setting', 'successfully', 'maintainers', 'new', 'old', 'first', 'last', 'daily', 'weekly', 'india', 'pakistan', 'search', 'checker', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'mercury', 'optimus',
   'married', 'working', 'works', 'worked', 'building', 'built', 'using', 'used', 'uses', 'wants', 'wanted', 'likes', 'liked', 'prefers', 'preferred', 'asked', 'asks', 'said', 'says', 'told', 'needs', 'needed', 'started', 'finished', 'created', 'updated', 'fixed', 'fixes', 'added', 'removed', 'please', 'thanks', 'thank',
   // roles and generic nouns
   'assistant', 'agent', 'agents', 'bot', 'bots', 'model', 'models', 'owner', 'admin', 'team', 'company', 'project', 'projects', 'product', 'products', 'customer', 'client', 'friend', 'friends', 'family', 'wife', 'husband', 'partner', 'mother', 'father', 'son', 'daughter', 'brother', 'sister',

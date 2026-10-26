@@ -40,6 +40,9 @@ export function git(args: readonly string[], cwd?: string): string {
     timeout: 15000,
     maxBuffer: 5 * 1024 * 1024,
     windowsHide: true,
+    // Capture stderr: inheriting it printed "fatal: not a git repository"
+    // into the daemon log on every poll of a non-git workspace.
+    stdio: ['ignore', 'pipe', 'pipe'],
   }).trim();
 }
 

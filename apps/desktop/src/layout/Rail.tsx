@@ -1,4 +1,4 @@
-import { Bot, Code2, MessageSquare, Puzzle, Settings, Sparkles } from "lucide-react";
+import { Bot, Brain, Code2, MessageSquare, Puzzle, Settings, Sparkles } from "lucide-react";
 import { useEffect } from "react";
 import { cx } from "~/lib/cx";
 import { useRuntimeState, useUi, type View } from "~/app/store";
@@ -10,8 +10,9 @@ const ITEMS: Array<{ view: View; label: string; icon: typeof MessageSquare; key:
   { view: "chat", label: "Chat", icon: MessageSquare, key: "1" },
   { view: "code", label: "Code", icon: Code2, key: "2" },
   { view: "bots", label: "Bots", icon: Bot, key: "3" },
-  { view: "plugins", label: "Plugins", icon: Puzzle, key: "4" },
-  { view: "skills", label: "Skills", icon: Sparkles, key: "5" },
+  { view: "brain", label: "Brain", icon: Brain, key: "4" },
+  { view: "plugins", label: "Plugins", icon: Puzzle, key: "5" },
+  { view: "skills", label: "Skills", icon: Sparkles, key: "6" },
 ];
 
 /**
