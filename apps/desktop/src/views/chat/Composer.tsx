@@ -1,5 +1,5 @@
 import { ArrowUp, ChevronDown, Paperclip, Shield, ShieldCheck, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cx } from "~/lib/cx";
 import * as api from "~/api/mercury";
 import type { ChatSettings, ModelsResponse } from "~/api/types";
@@ -51,12 +51,24 @@ export function Composer({ surface, placeholder, code, extra, blockedReason }: C
   const agent = useConversation((s) => s.agent);
   const connected = useRuntimeState((s) => s.connected);
 
+  // Fit the box to its text. Re-measured when the text changes AND when the
+  // box's width changes or it becomes visible (a hidden view measures 0 and a
+  // narrower layout wraps more lines), so text never runs under the controls.
+  const fit = useCallback(() => {
+    const el = ref.current;
+    if (!el || el.offsetParent === null) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 26), 240)}px`;
+  }, []);
+  useLayoutEffect(fit, [text, files.length, fit]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    el.style.height = "0px";
-    el.style.height = `${Math.min(Math.max(el.scrollHeight, 28), 240)}px`;
-  }, [text]);
+    const ro = new ResizeObserver(() => fit());
+    ro.observe(el);
+    if (el.parentElement) ro.observe(el.parentElement);
+    return () => ro.disconnect();
+  }, [fit]);
 
   // ⌘L / Ctrl+L focuses the box from anywhere in the view.
   useEffect(() => {
@@ -157,10 +169,10 @@ export function Composer({ surface, placeholder, code, extra, blockedReason }: C
             placeholder={!connected ? "Waiting for Mercury…" : blockedReason ?? placeholder}
             rows={1}
             disabled={!connected}
-            className="block w-full resize-none bg-transparent px-5 pt-4 text-md leading-[26px] text-ink caret-accent placeholder:text-ink4"
+            className="block max-h-[240px] w-full resize-none overflow-y-auto bg-transparent px-5 pb-1 pt-4 text-md leading-[26px] text-ink caret-accent placeholder:truncate placeholder:text-ink4"
             aria-label="Message"
           />
-          <div className="flex items-center gap-1 px-3 pb-3 pt-1.5">
+          <div className="flex flex-wrap items-center gap-1 px-3 pb-3 pt-1.5">
             <Tooltip label="Attach images or PDFs" side="top">
               <Button variant="ghost" size="md" icon onClick={() => picker.current?.click()} disabled={!connected || files.length >= MAX_FILES} aria-label="Attach">
                 <Paperclip size={17} />
