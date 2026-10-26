@@ -54,12 +54,9 @@ function AgentState() {
 
 function Background() {
   const bg = usePulse((s) => s.background);
-  const bots = useBots((s) => s.bots);
-  const activity = useBots((s) => s.activity);
   const runningTasks = bg.tasks.filter((t) => /run|pend|queue/i.test(t.status));
-  const workingBots = bots.filter((b) => b.state === "running" || b.state === "queued");
   const agents = bg.agents.filter((a) => !/done|complete|fail|cancel/i.test(a.status));
-  const count = runningTasks.length + workingBots.length + agents.length;
+  const count = runningTasks.length + agents.length;
   return (
     <StatusPopover width={360} trigger={
       <Trigger title="Background work" tone={count ? "accent" : undefined}>
@@ -69,9 +66,29 @@ function Background() {
     }>
       <PanelTitle>Background</PanelTitle>
       {count === 0 && <p className="text-sm text-ink3">Nothing running in the background.</p>}
-      {workingBots.map((b) => <Line key={b.id} icon={<Bot size={13} />} title={b.name} detail={activity[b.id] ?? b.state} />)}
       {agents.map((a) => <Line key={a.id} icon={<Cpu size={13} />} title={a.task} detail={`sub-agent · ${a.status}${a.tokensUsed ? ` · ${compact(a.tokensUsed)} tok` : ""}`} />)}
       {runningTasks.map((t) => <Line key={t.id} icon={<Layers size={13} />} title={t.description} detail={t.status} />)}
+    </StatusPopover>
+  );
+}
+
+/** Bots at work: the rail's bot icon and how many are running. Hidden when none are. */
+function BotsRunning() {
+  const bots = useBots((s) => s.bots);
+  const activity = useBots((s) => s.activity);
+  const setView = useUi((s) => s.setView);
+  const running = bots.filter((b) => b.state === "running" || b.state === "queued" || activity[b.id]);
+  if (running.length === 0) return null;
+  return (
+    <StatusPopover width={340} trigger={
+      <Trigger title={`${running.length} bot${running.length === 1 ? "" : "s"} running`} tone="accent">
+        <Bot size={14} />
+        <span>{running.length}</span>
+      </Trigger>
+    }>
+      <PanelTitle>Bots running · {running.length}</PanelTitle>
+      {running.map((b) => <Line key={b.id} icon={<Bot size={13} />} title={b.name} detail={activity[b.id] ?? (b.state === "queued" ? "queued" : "working")} />)}
+      <button onClick={() => setView("bots")} className="mt-1 w-full rounded-md px-1 py-1.5 text-left text-xs text-accent hover:underline">Open Bots</button>
     </StatusPopover>
   );
 }
@@ -223,6 +240,7 @@ export function registerBuiltinStatusItems(): void {
   registered = true;
   mercuryUi.registerStatusItem({ id: "mercury.connection", title: "Connection", area: "status.left", priority: 100, render: Connection });
   mercuryUi.registerStatusItem({ id: "mercury.agent", title: "Agent state", area: "status.left", priority: 90, render: AgentState });
+  mercuryUi.registerStatusItem({ id: "mercury.bots", title: "Bots running", area: "status.left", priority: 85, render: BotsRunning });
   mercuryUi.registerStatusItem({ id: "mercury.background", title: "Background work", area: "status.left", priority: 80, render: Background });
   mercuryUi.registerStatusItem({ id: "mercury.schedules", title: "Schedules", area: "status.left", priority: 70, render: Schedules });
   mercuryUi.registerStatusItem({ id: "mercury.code", title: "Code mode", area: "status.right", priority: 70, views: ["chat", "code"], render: CodeMode });
