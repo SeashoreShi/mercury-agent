@@ -1,4 +1,4 @@
-import { Info, PanelBottom, Palette, Power, Server, Smartphone } from "lucide-react";
+import { Activity, Info, PanelBottom, Palette, Power, Server, Smartphone } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cx } from "~/lib/cx";
 import * as api from "~/api/mercury";
@@ -12,17 +12,19 @@ import { Badge, Mono, Segmented } from "~/components/ui/bits";
 import { Dialog } from "~/components/ui/Dialog";
 import { AddRemote } from "~/shell/AddRemote";
 import { StateOrb } from "~/components/indicators/StateOrb";
+import { Analytics } from "./Analytics";
 import { isVisible, orderedIds, useContributions, type ContributionArea } from "~/extensions/registry";
 
 /**
  * Settings: a section list on the left, one section on the right. Most-used
  * first (Appearance), plain labels, every control explains itself in one line.
  */
-type Section = "appearance" | "statusbar" | "connections" | "devices" | "startup" | "about";
+type Section = "appearance" | "statusbar" | "analytics" | "connections" | "devices" | "startup" | "about";
 
 const SECTIONS: Array<{ id: Section; label: string; icon: typeof Palette }> = [
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "statusbar", label: "Status bar", icon: PanelBottom },
+  { id: "analytics", label: "Analytics", icon: Activity },
   { id: "connections", label: "Connections", icon: Server },
   { id: "devices", label: "Paired devices", icon: Smartphone },
   { id: "startup", label: "Start-up", icon: Power },
@@ -48,14 +50,15 @@ export function SettingsView({ connection, health, onSwitchConnection }: { conne
         </nav>
       </aside>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-[680px] flex-col gap-6 px-8 py-8">
+        <div className={cx("mx-auto flex flex-col gap-6 px-8 py-8", section === "analytics" ? "max-w-[960px]" : "max-w-[680px]")}>
           <h1 className="text-xl font-semibold tracking-tight text-ink">{SECTIONS.find((s) => s.id === section)?.label}</h1>
           {section === "appearance" && <Appearance />}
           {section === "statusbar" && <StatusBarSettings />}
+          {section === "analytics" && <Analytics />}
           {section === "connections" && <Connections current={connection} health={health} onSwitchConnection={onSwitchConnection} />}
           {section === "devices" && <Devices current={connection} />}
           {section === "startup" && <Startup />}
-          {section === "about" && <About health={health} />}
+          {section === "about" && <About health={health} onAnalytics={() => setSection("analytics")} />}
         </div>
       </div>
     </div>
@@ -190,7 +193,7 @@ function Startup() {
   );
 }
 
-function About({ health }: { health: HealthInfo }) {
+function About({ health, onAnalytics }: { health: HealthInfo; onAnalytics?: () => void }) {
   const [appVersion, setAppVersion] = useState("");
   useEffect(() => {
     if (!isTauri) return;
@@ -202,6 +205,7 @@ function About({ health }: { health: HealthInfo }) {
         <div className="flex items-center justify-between"><span>Mercury Desktop</span><Mono>{appVersion || "dev"}</Mono></div>
         <div className="mt-1 flex items-center justify-between"><span>Runtime</span><Mono>{health.version} · API v{health.apiVersion ?? "?"}</Mono></div>
         <button className="mt-3 text-xs text-accent hover:underline" onClick={() => void desktop.openExternal("https://mercuryagent.sh")}>mercuryagent.sh</button>
+        {onAnalytics && <button className="ml-4 mt-3 text-xs text-accent hover:underline" onClick={onAnalytics}>Your activity →</button>}
       </div>
     </section>
   );

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { readHistory, historySince } from '../../utils/token-history.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SkillLoader } from '../../skills/loader.js';
@@ -142,6 +143,13 @@ system.put('/api/permissions', async (c) => {
   };
   manager.save(next);
   return c.json({ success: true, manifest: next });
+});
+
+/** Day-by-day tokens for the activity heat map: ?days=1..1100 (default 371). */
+system.get('/api/usage/history', (c) => {
+  const parsed = parseInt(c.req.query('days') ?? '371', 10);
+  const days = Number.isFinite(parsed) ? Math.max(1, Math.min(1100, parsed)) : 371;
+  return c.json({ days: readHistory(days), since: historySince() });
 });
 
 system.get('/api/usage', (c) => {

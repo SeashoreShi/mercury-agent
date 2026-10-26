@@ -4,7 +4,7 @@ import { WebChannel } from './web.js';
 describe('web channel reasoning stream', () => {
   it('batches deltas and closes the block when the answer starts', async () => {
     vi.useFakeTimers();
-    const ch = new WebChannel();
+    const ch = new WebChannel('Mercury');
     const sent: Array<{ type: string; data?: Record<string, unknown> }> = [];
     (ch as unknown as { broadcast: (e: { type: string; data?: Record<string, unknown> }) => boolean }).broadcast = (e) => { sent.push(e); return true; };
     ch.sendReasoning('Let me ', 's1');

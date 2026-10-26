@@ -35,6 +35,7 @@ export const API_FEATURES: readonly string[] = Object.freeze([
   'code.session',      // POST /api/chat/send { programming, cwd } — per-session coding
   'chat.uploads',      // attachments on messages + GET /api/chat/uploads/:month/:file
   'voice',             // /api/voice, /api/voice/events, /api/voice/control (Optimus)
+  'usage.history',     // GET /api/usage/history?days= — tokens per local day
 ]);
 
 export interface ApiContractInfo {
