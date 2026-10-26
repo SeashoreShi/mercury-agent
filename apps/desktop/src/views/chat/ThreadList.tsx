@@ -48,25 +48,25 @@ export function ThreadList() {
   }
 
   return (
-    <aside className="flex h-full w-[260px] shrink-0 flex-col border-r border-line bg-soft">
+    <aside className="flex h-full w-[300px] shrink-0 flex-col border-r border-line bg-soft">
       <div className="flex h-[52px] shrink-0 items-center px-3" data-tauri-drag-region>
-        <label className="flex h-8 w-full items-center gap-2 rounded-md border border-line bg-surface px-2.5 text-ink4 focus-within:border-line-strong">
-          <Search size={14} aria-hidden="true" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search threads" className="w-full bg-transparent text-sm text-ink placeholder:text-ink4" aria-label="Search threads" />
+        <label className="flex h-9 w-full items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-ink4 focus-within:border-line-strong">
+          <Search size={16} aria-hidden="true" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search threads" className="w-full bg-transparent text-base text-ink placeholder:text-ink4" aria-label="Search threads" />
         </label>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-        {filtered.length === 0 && <p className="px-2 pt-2 text-sm text-ink4">{query ? "No matching threads." : "No threads yet."}</p>}
+        {filtered.length === 0 && <p className="px-3 pt-2 text-base text-ink4">{query ? "No matching threads." : "No threads yet."}</p>}
         {groups.map(([day, list]) => (
-          <div key={day} className="mb-4">
-            <div className="px-2.5 pb-1 text-2xs font-medium uppercase tracking-wider text-ink4">{day}</div>
+          <div key={day} className="mb-5">
+            <div className="px-3 pb-1.5 text-xs font-medium uppercase tracking-wider text-ink4">{day}</div>
             {list.map((t) => (
-              <div key={t.id} className={cx("group flex items-center rounded-md", activeId === t.id ? "bg-ink/[0.07]" : "hover:bg-ink/[0.05]")}>
-                <button onClick={() => void openThread(t.id)} className="min-w-0 flex-1 truncate px-2.5 py-[7px] text-left text-sm" title={t.title || "Untitled"}>
+              <div key={t.id} className={cx("group flex items-center rounded-lg", activeId === t.id ? "bg-ink/[0.07]" : "hover:bg-ink/[0.05]")}>
+                <button onClick={() => void openThread(t.id)} className="min-w-0 flex-1 truncate px-3 py-2.5 text-left text-base" title={t.title || "Untitled"}>
                   <span className={activeId === t.id ? "text-ink" : "text-ink2 group-hover:text-ink"}>{t.title || "Untitled"}</span>
                 </button>
                 <button onClick={() => void remove(t)} className="mr-1 hidden rounded p-1 text-ink4 hover:text-red group-hover:block" aria-label="Delete thread">
-                  <Trash2 size={14} />
+                  <Trash2 size={15} />
                 </button>
               </div>
             ))}
