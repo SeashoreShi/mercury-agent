@@ -53,6 +53,19 @@ export const desktop = {
     return invoke<LocalRuntime>("detect_local_runtime");
   },
 
+  /**
+   * Loopback health from the native side. Works against runtimes that
+   * predate CORS (the webview's own fetch would be blinded by the browser).
+   */
+  async probeLocalHealth(port: number): Promise<Record<string, unknown>> {
+    if (!isTauri) {
+      const res = await fetch(`http://127.0.0.1:${port}/api/health`);
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      return (await res.json()) as Record<string, unknown>;
+    }
+    return invoke<Record<string, unknown>>("probe_local_health", { port });
+  },
+
   readAttachToken(): Promise<string | null> {
     if (!isTauri) return Promise.resolve(null);
     return invoke<string | null>("read_attach_token");

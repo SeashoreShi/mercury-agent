@@ -38,6 +38,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::local::detect_local_runtime,
             commands::local::read_attach_token,
+            commands::local::probe_local_health,
             commands::local::run_mercury,
             commands::installer::install_runtime,
             commands::secrets::secret_get,

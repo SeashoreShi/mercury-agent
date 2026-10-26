@@ -6,6 +6,7 @@ import { AddRemote } from "./AddRemote";
 import { InstallRuntime } from "./InstallRuntime";
 import { desktop, type LocalRuntime } from "./tauri";
 import { LOCAL_CONNECTION_ID, useConnections } from "./connections";
+import { checkCompat, SUPPORTED_API } from "./compat";
 
 /**
  * First run (design v2, board 01): where should Mercury run?
@@ -17,6 +18,7 @@ import { LOCAL_CONNECTION_ID, useConnections } from "./connections";
 type LocalProbe =
   | { state: "probing" }
   | { state: "running"; runtime: LocalRuntime; health: HealthInfo }
+  | { state: "outdated"; runtime: LocalRuntime; health: HealthInfo }
   | { state: "installed"; runtime: LocalRuntime }
   | { state: "missing"; runtime: LocalRuntime };
 
@@ -31,10 +33,15 @@ export function Onboarding({ onDone, canCancel }: { onDone: () => void; canCance
   async function probe() {
     setLocal({ state: "probing" });
     const runtime = await desktop.detectLocalRuntime();
-    const baseUrl = `http://127.0.0.1:${runtime.port}`;
     try {
-      const health = await api.health.probe(baseUrl, null, 2500);
-      setLocal({ state: "running", runtime, health });
+      const raw = await desktop.probeLocalHealth(runtime.port);
+      const health = raw as unknown as HealthInfo;
+      const compat = checkCompat(health.apiVersion);
+      if (!compat.ok && compat.reason === "runtime-too-old") {
+        setLocal({ state: "outdated", runtime, health });
+      } else {
+        setLocal({ state: "running", runtime, health });
+      }
     } catch {
       setLocal(runtime.binaryPath ? { state: "installed", runtime } : { state: "missing", runtime });
     }
@@ -51,6 +58,22 @@ export function Onboarding({ onDone, canCancel }: { onDone: () => void; canCance
       await add({ id: LOCAL_CONNECTION_ID, kind: "local", name, baseUrl: `http://127.0.0.1:${local.runtime.port}` });
       await setActive(LOCAL_CONNECTION_ID);
       onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function upgradeLocal() {
+    setBusy("upgrade");
+    setError(null);
+    try {
+      const out = await desktop.runMercury(["upgrade"]);
+      if (out.code !== 0) throw new Error((out.stderr || out.stdout).trim().split(/\r?\n/)[0] || `mercury upgrade exited with ${out.code}`);
+      // The upgrade restarts the daemon; give the listener a moment.
+      await new Promise((r) => setTimeout(r, 4000));
+      await probe();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -99,12 +122,12 @@ export function Onboarding({ onDone, canCancel }: { onDone: () => void; canCance
 
         <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-3">
           {/* 1 · Found here */}
-          <Card highlighted={local.state === "running"} badge={local.state === "running" ? `FOUND ON ${platformLabel.toUpperCase()}` : undefined}>
+          <Card highlighted={local.state === "running" || local.state === "outdated"} badge={local.state === "running" || local.state === "outdated" ? `FOUND ON ${platformLabel.toUpperCase()}` : undefined}>
             <CardTitle>Use the Mercury that's here</CardTitle>
             {local.state === "probing" && <CardBody>Looking for a running Mercury…</CardBody>}
             {local.state === "running" && (
               <>
-                <CardBody>Mercury {local.health.version} is running{local.runtime.serviceInstalled ? " as a service" : ""}. The app attaches to it. Sessions, memory, skills and plugins stay exactly where they are.</CardBody>
+                <CardBody>Mercury {local.health.version || local.runtime.binaryVersion || ""} is running{local.runtime.serviceInstalled ? " as a service" : ""}. The app attaches to it. Sessions, memory, skills and plugins stay exactly where they are.</CardBody>
                 <Facts rows={[
                   ["bin", local.runtime.binaryPath ?? "—"],
                   ["daemon", `running · pid ${local.health.pid}`],
@@ -113,6 +136,14 @@ export function Onboarding({ onDone, canCancel }: { onDone: () => void; canCance
                 ]} />
                 <div className="flex-1" />
                 <PrimaryButton onClick={() => void useLocal()} disabled={busy !== null}>{busy === "local" ? "Connecting…" : "Connect"}</PrimaryButton>
+              </>
+            )}
+            {local.state === "outdated" && (
+              <>
+                <CardBody>Mercury {local.health.version || local.runtime.binaryVersion || ""} is running here, but it predates the desktop API (needs API v{SUPPORTED_API.min}, Mercury 1.5 or newer). Upgrade it and the app attaches; nothing else changes.</CardBody>
+                <Facts rows={[["bin", local.runtime.binaryPath ?? "—"], ["daemon", `running · pid ${local.health.pid}`], ["api", `127.0.0.1:${local.runtime.port} · v${local.health.apiVersion ?? "0"}`]]} />
+                <div className="flex-1" />
+                <PrimaryButton onClick={() => void upgradeLocal()} disabled={busy !== null}>{busy === "upgrade" ? "Upgrading…" : "Upgrade Mercury"}</PrimaryButton>
               </>
             )}
             {local.state === "installed" && (

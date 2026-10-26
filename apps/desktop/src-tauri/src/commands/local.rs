@@ -33,7 +33,7 @@ const DEFAULT_PORT: u16 = 6174;
 
 /// Subcommands the app is allowed to run on the user's behalf. Anything
 /// else is refused; the frontend is not a shell.
-const ALLOWED_SUBCOMMANDS: &[&str] = &["service", "start", "stop", "status", "devices", "setup", "--version"];
+const ALLOWED_SUBCOMMANDS: &[&str] = &["service", "start", "stop", "status", "devices", "setup", "upgrade", "--version"];
 
 pub(crate) fn mercury_home() -> PathBuf {
     if let Ok(home) = env::var("MERCURY_HOME") {
@@ -181,6 +181,28 @@ pub fn detect_local_runtime() -> LocalRuntime {
         service_installed: service_installed(),
         platform: platform(),
     }
+}
+
+/// `GET /api/health` on loopback, from the native side. The webview cannot
+/// ask directly when the runtime predates CORS support (< 1.5.0): the browser
+/// hides the answer. From here we see the real thing and can tell the user
+/// "found, but needs an upgrade" instead of "not running".
+#[tauri::command]
+pub async fn probe_local_health(port: u16) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(2500))
+        .no_proxy()
+        .build()
+        .map_err(|e| e.to_string())?;
+    let res = client
+        .get(format!("http://127.0.0.1:{port}/api/health"))
+        .send()
+        .await
+        .map_err(|e| format!("unreachable: {e}"))?;
+    if !res.status().is_success() {
+        return Err(format!("status {}", res.status()));
+    }
+    res.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
 /// The runtime's per-boot, owner-only attach token (src/web/auth.ts). The

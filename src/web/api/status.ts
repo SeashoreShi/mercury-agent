@@ -47,7 +47,10 @@ let runtimeVersion = '';
 function versionString(): string {
   if (runtimeVersion) return runtimeVersion;
   try {
+    // tsup bakes the version into the bundle (globalThis.__MERCURY_VERSION__);
+    // package.json is only reachable when running from source.
     runtimeVersion = process.env.MERCURY_CHANNEL_VERSION
+      || (globalThis as { __MERCURY_VERSION__?: string }).__MERCURY_VERSION__
       || JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'package.json'), 'utf8')).version
       || '';
   } catch { runtimeVersion = ''; }

@@ -3,6 +3,7 @@ import api, { type HealthInfo } from "@/lib/api";
 import { configureApi } from "@/lib/connection";
 import { checkCompat, type Compat } from "./compat";
 import { credentialFor, type Connection } from "./connections";
+import { desktop } from "./tauri";
 
 /**
  * Bring one connection to life: resolve its credential, point the shared
@@ -65,7 +66,12 @@ export function useRuntime(connection: Connection, onUnauthorized: () => void): 
       });
 
       try {
-        const health = await api.health.probe(connection.baseUrl, token);
+        // A local runtime is asked from the native side first: that works
+        // even when it predates CORS, so an old runtime reads as
+        // "incompatible, upgrade" rather than "offline".
+        const health: HealthInfo = connection.kind === "local"
+          ? ((await desktop.probeLocalHealth(portOf(connection.baseUrl))) as unknown as HealthInfo)
+          : await api.health.probe(connection.baseUrl, token);
         if (cancelled) return;
         const compat = checkCompat(health.apiVersion);
         if (!compat.ok) {
@@ -93,4 +99,13 @@ export function useRuntime(connection: Connection, onUnauthorized: () => void): 
   }, [connection, attempt, retry]);
 
   return { status, retry };
+}
+
+function portOf(baseUrl: string): number {
+  try {
+    const port = Number(new URL(baseUrl).port);
+    return Number.isInteger(port) && port > 0 ? port : 6174;
+  } catch {
+    return 6174;
+  }
 }
