@@ -112,7 +112,7 @@ export function Composer({ mode }: { mode: "chat" | "code" }) {
           onDragLeave={() => setDragging(false)}
           onDrop={(e) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files.length) void addFiles(e.dataTransfer.files); }}
           className={cx(
-            "rounded-2xl border bg-surface transition-[border-color,box-shadow] duration-150",
+            "rounded-3xl border bg-surface transition-[border-color,box-shadow] duration-150",
             "shadow-[0_1px_2px_rgb(0_0_0/0.04),0_4px_16px_-8px_rgb(0_0_0/0.12)]",
             "focus-within:border-line-strong focus-within:shadow-[0_0_0_4px_rgb(var(--ink)/0.05),0_4px_16px_-8px_rgb(0_0_0/0.16)]",
             dragging ? "border-accent border-dashed" : "border-line",
@@ -120,9 +120,9 @@ export function Composer({ mode }: { mode: "chat" | "code" }) {
           )}
         >
           {files.length > 0 && (
-            <div className="flex flex-wrap gap-2 px-3 pt-3">
+            <div className="flex flex-wrap gap-2 px-4 pt-4">
               {files.map((f) => (
-                <span key={f.id} className="group flex h-12 items-center gap-2 rounded-lg border border-line bg-raised pl-1 pr-2 text-xs text-ink2">
+                <span key={f.id} className="group flex h-12 items-center gap-2 rounded-xl border border-line bg-raised pl-1 pr-2 text-xs text-ink2">
                   {f.preview ? <img src={f.preview} alt="" className="h-10 w-10 rounded-md object-cover" /> : <span className="flex h-10 w-10 items-center justify-center rounded-md bg-red/10 font-mono text-2xs text-red">PDF</span>}
                   <span className="max-w-[140px]">
                     <span className="block truncate text-ink">{f.name}</span>
@@ -145,10 +145,10 @@ export function Composer({ mode }: { mode: "chat" | "code" }) {
             placeholder={!connected ? "Waiting for Mercury…" : mode === "code" ? "Describe the change…" : "Ask anything…"}
             rows={1}
             disabled={!connected}
-            className="block w-full resize-none bg-transparent px-4 pt-[14px] text-md leading-[26px] text-ink caret-accent placeholder:text-ink4"
+            className="block w-full resize-none bg-transparent px-5 pt-4 text-md leading-[26px] text-ink caret-accent placeholder:text-ink4"
             aria-label="Message"
           />
-          <div className="flex items-center gap-1 px-2 pb-2 pt-1.5">
+          <div className="flex items-center gap-1 px-3 pb-3 pt-1.5">
             <Tooltip label="Attach images or PDFs" side="top">
               <Button variant="ghost" size="md" icon onClick={() => picker.current?.click()} disabled={!connected || files.length >= MAX_FILES} aria-label="Attach">
                 <Paperclip size={17} />
