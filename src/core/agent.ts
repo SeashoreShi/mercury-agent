@@ -134,7 +134,7 @@ import type { ApplyResult } from '../memory/beliefs.js';
  */
 export function stepAwareTextStream(
   fullStream: AsyncIterable<any>,
-  onReasoning?: (preview: string | null) => void,
+  onReasoning?: (preview: string | null, delta?: string) => void,
 ): AsyncIterable<string> {
   return (async function* () {
     let firstStep = true;
@@ -155,7 +155,7 @@ export function stepAwareTextStream(
         // Live thinking feedback: the model reasoning before speaking is
         // surfaced as a preview instead of dead air.
         reasoningBuf = (reasoningBuf + part.text).slice(-400);
-        onReasoning?.(reasoningBuf.slice(-160));
+        onReasoning?.(reasoningBuf.slice(-160), part.text);
         continue;
       }
       if (part.type === 'text-delta' && part.text) {
@@ -3380,9 +3380,13 @@ export class Agent {
             });
 
             const cliChThinking = channel instanceof CLIChannel ? channel : null;
+            // Clients that show the thought process live (Mercury Desktop) get the reasoning text.
+            const webChThinking = channel instanceof WebChannel ? channel : null;
+            const reasoningTarget = msg.channelId;
             const trackedStream = this.withProgressStream((async function* () {
-              for await (const chunk of (stepAwareTextStream(streamResult.fullStream, (preview) => {
+              for await (const chunk of (stepAwareTextStream(streamResult.fullStream, (preview, delta) => {
                 cliChThinking?.showThinkingPreview(preview);
+                if (webChThinking) webChThinking.sendReasoning(preview === null ? null : delta ?? '', reasoningTarget);
               }))) {
                 if (chunk) hasStreamedOutput = true;
                 cliChThinking?.showThinkingPreview(null);

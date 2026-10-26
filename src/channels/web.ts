@@ -17,7 +17,7 @@ interface PendingInteraction {
 }
 
 export interface ChatEvent {
-  type: 'thinking' | 'provider' | 'heartbeat' | 'step_start' | 'step_done' | 'text_delta' | 'text_done' | 'permission_request' | 'permission_continue' | 'permission_mode' | 'permission_resolved' | 'choice_prompt' | 'choice_resolved' | 'loop_warning' | 'error' | 'bot_activity' | 'status' | 'session_switched';
+  type: 'thinking' | 'reasoning' | 'provider' | 'heartbeat' | 'step_start' | 'step_done' | 'text_delta' | 'text_done' | 'permission_request' | 'permission_continue' | 'permission_mode' | 'permission_resolved' | 'choice_prompt' | 'choice_resolved' | 'loop_warning' | 'error' | 'bot_activity' | 'status' | 'session_switched';
   data?: Record<string, unknown>;
 }
 
@@ -295,6 +295,36 @@ export class WebChannel extends BaseChannel {
       type: 'step_start',
       data: { step, tool: toolName, label: String(label), targetId },
     });
+  }
+
+  /**
+   * The model's reasoning as it streams, for clients that show the thought
+   * process live. Deltas are batched (≤ 8 events/s per target); null closes
+   * the reasoning block when the answer starts.
+   */
+  private reasoningBuf = new Map<string, { text: string; timer: ReturnType<typeof setTimeout> | null }>();
+
+  sendReasoning(delta: string | null, targetId?: string): void {
+    const key = targetId || 'default';
+    const entry = this.reasoningBuf.get(key) ?? { text: '', timer: null };
+    const flush = () => {
+      const e = this.reasoningBuf.get(key);
+      if (!e) return;
+      if (e.timer) clearTimeout(e.timer);
+      e.timer = null;
+      if (e.text) this.broadcast({ type: 'reasoning', data: { text: e.text, targetId } });
+      e.text = '';
+    };
+    if (delta === null) {
+      this.reasoningBuf.set(key, entry);
+      flush();
+      this.broadcast({ type: 'reasoning', data: { done: true, targetId } });
+      this.reasoningBuf.delete(key);
+      return;
+    }
+    entry.text += delta;
+    this.reasoningBuf.set(key, entry);
+    if (!entry.timer) entry.timer = setTimeout(flush, 125);
   }
 
   sendStepDone(toolName: string, result: unknown, targetId?: string): void {
