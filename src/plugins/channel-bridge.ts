@@ -37,6 +37,7 @@
  * first answer wins. The plugin accepts a spoken yes only when the owner's own
  * transcribed words say yes, and a spoken yes never becomes "always".
  */
+import { voiceFeed } from './voice-feed.js';
 import { basename } from 'node:path';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -249,10 +250,15 @@ export class PluginChannel extends BaseChannel {
   attach(): void {
     live.set(this.manifest.id, this);
     host?.register(this.type, this);
+    // Desktop voice (Optimus): clients see the session live and can steer it.
+    if (this.desktop) voiceFeed.attach(this.manifest.name, (action) => this.transport.notify?.('mercury/voice/control', { action }));
   }
 
   detach(): void {
-    if (this.desktop) desktopActivityHook?.(null);
+    if (this.desktop) {
+      desktopActivityHook?.(null);
+      voiceFeed.detach(this.manifest.name);
+    }
     if (live.get(this.manifest.id) === this) live.delete(this.manifest.id);
     host?.unregister(this.type, this);
     this.ready = false;
@@ -288,6 +294,7 @@ export class PluginChannel extends BaseChannel {
           return { accept: false, reason: 'voice engine not ready' };
         }
         this.callStarted(String(p.callId ?? ''));
+        if (this.desktop) voiceFeed.started(String(p.callId ?? ''));
         return { accept: true, instructions: voiceBriefing() };
       }
       case 'mercury/call/briefing':
@@ -330,6 +337,7 @@ export class PluginChannel extends BaseChannel {
         const callId = typeof p.callId === 'string' ? p.callId.replace(/[^\w.-]/g, '').slice(0, 80) : '';
         const question = typeof p.question === 'string' ? p.question.trim().slice(0, 4000) : '';
         if (!callId || !question) throw new Error('callId and question are required');
+        if (this.desktop) voiceFeed.asked(callId, question);
         return { answer: await this.askDuringCall(callId, question) };
       }
       default:
@@ -389,6 +397,7 @@ export class PluginChannel extends BaseChannel {
       this.callAsks.delete(target);
       const answer = ask.chunks.filter((c) => !/^(☿|⚙|⏳|\s*\[)/.test(c.trim())).pop() ?? ask.chunks.pop() ?? '';
       ask.resolve(spokenPart(answer) || 'Done.');
+      if (this.desktop) voiceFeed.answered(spokenPart(answer) || 'Done.');
       // On the desktop there's no chat to send details to later: deliver them now.
       const extra = chatPart(answer);
       if (this.desktop && extra) this.notifyOwner(`🎙 From Optimus:\n${extra}`);
@@ -400,6 +409,7 @@ export class PluginChannel extends BaseChannel {
   private onActivity(params: unknown): void {
     const p = (params ?? {}) as Record<string, unknown>;
     desktopActivityHook?.(activityLabel(this.manifest.name, p.listening === true, p.working === true, p.muted === true));
+    if (this.desktop) voiceFeed.activity({ listening: p.listening === true, working: p.working === true, muted: p.muted === true, speaking: p.speaking === true });
   }
 
   private onCallEnded(params: unknown): void {
@@ -414,6 +424,7 @@ export class PluginChannel extends BaseChannel {
       }
     }
     this.activeCalls.delete(String(p.callId ?? ''));
+    if (this.desktop) voiceFeed.ended(String(p.callId ?? ''), String(p.outcome ?? 'ended'));
     for (const [id, a] of this.callApprovals) if (a.callId === String(p.callId ?? '')) this.resolveCallApproval(id, 'no', 'timeout');
     const secs = typeof p.durationSec === 'number' ? Math.round(p.durationSec) : 0;
     // A desktop session happened in front of the owner: only report failures.
@@ -709,6 +720,7 @@ export class PluginChannel extends BaseChannel {
     const call = this.callTarget(channelId);
     if (!call) return;
     this.transport.notify?.('mercury/call/progress', { callId: call.slice('call:'.length), activity: describeTool(toolName) });
+    if (this.desktop) voiceFeed.doing(describeTool(toolName));
   }
 
   /** `whatsapp:call:<id>` → `call:<id>`; undefined for normal chats. */
@@ -778,6 +790,7 @@ export class PluginChannel extends BaseChannel {
       const timer = setTimeout(() => this.resolveCallApproval(approvalId, 'no', 'timeout'), APPROVAL_TIMEOUT_MS);
       this.callApprovals.set(approvalId, { callId, prompt, resolve, timer });
       this.transport.notify?.('mercury/call/approval', { callId, approvalId, prompt: prompt.slice(0, 600) });
+      if (this.desktop) voiceFeed.approval(prompt.slice(0, 600));
       if (this.desktop) return;
       const chat = this.ownerChatId ? `${this.type}:${this.ownerChatId}` : undefined;
       void this.send(`🔐 From your call: ${prompt}\n\nSay *yes* on the call, or reply *1* (yes) or *2* (no) here.`, chat).catch(() => {});

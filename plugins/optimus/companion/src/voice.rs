@@ -32,11 +32,15 @@ pub enum Ctl {
     Narrate(String),
     /// The mute key: stop (or start again) listening, without stopping any work.
     Mute,
+    /// Pause from Mercury Desktop: stop what it's saying or doing, keep the session.
+    Interrupt,
 }
 
 pub struct SessionCtl {
     tx: mpsc::UnboundedSender<Ctl>,
     muted: Arc<std::sync::atomic::AtomicBool>,
+    /// Mercury's voice is playing right now (published as activity.speaking).
+    speaking: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl SessionCtl {
@@ -51,6 +55,29 @@ impl SessionCtl {
     }
     pub fn is_muted(&self) -> bool {
         self.muted.load(std::sync::atomic::Ordering::Relaxed)
+    }
+    /// Mute or unmute to a known state (a remote control can't rely on toggling).
+    pub fn set_mute(&self, on: bool) {
+        if self.is_muted() != on {
+            let _ = self.tx.send(Ctl::Mute);
+        }
+    }
+    pub fn interrupt(&self) {
+        let _ = self.tx.send(Ctl::Interrupt);
+    }
+    pub fn is_speaking(&self) -> bool {
+        self.speaking.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+/// Record whether Mercury's voice is playing, and tell Mercury when it changes.
+fn set_speaking(sh: &Arc<Shared>, on: bool) {
+    let changed = match sh.session.lock().unwrap().as_ref() {
+        Some(s) => s.speaking.swap(on, std::sync::atomic::Ordering::Relaxed) != on,
+        None => false,
+    };
+    if changed {
+        sh.publish_activity();
     }
 }
 
@@ -77,7 +104,7 @@ pub async fn press(sh: Arc<Shared>, from_tool: bool) -> Result<String, String> {
         if live.is_some() {
             return Ok(String::new());
         }
-        *live = Some(SessionCtl { tx, muted: muted.clone() });
+        *live = Some(SessionCtl { tx, muted: muted.clone(), speaking: Arc::new(std::sync::atomic::AtomicBool::new(false)) });
     }
     crate::core::clear_halt();
     let call_id = format!("desk-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0));
@@ -300,6 +327,24 @@ async fn bridge(
                     set_muted(sh, muted, &out, now, &call_id);
                     last_activity = Instant::now();
                 }
+                Some(Ctl::Interrupt) => {
+                    // Like the talk key, except it never ends the session.
+                    if busy_working(&pending) {
+                        stop_all(&pending);
+                        narration = None;
+                        ready_answers.clear();
+                        out.clear();
+                        link.send(LinkCmd::Cancel);
+                        say_stopped(&link, brain);
+                        responding = true;
+                    } else if responding || out.recently_audible(300) {
+                        out.clear();
+                        link.send(LinkCmd::Cancel);
+                        responding = false;
+                        set_speaking(sh, false);
+                    }
+                    last_activity = Instant::now();
+                }
                 Some(Ctl::Press) if muted.load(std::sync::atomic::Ordering::Relaxed) => {
                     // Muted: the talk key unmutes rather than stopping anything.
                     set_muted(sh, muted, &out, false, &call_id);
@@ -421,9 +466,13 @@ async fn bridge(
                 let Some(ev) = ev else { break Err("the voice connection ended".to_string()) };
                 match ev {
                     LinkEvent::Closed(reason) => break Err(reason),
-                    LinkEvent::ResponseStarted => responding = true,
+                    LinkEvent::ResponseStarted => {
+                        responding = true;
+                        set_speaking(sh, true);
+                    }
                     LinkEvent::ResponseDone => {
                         responding = false;
+                        set_speaking(sh, false);
                         if !ready_answers.is_empty() { deliver(&link, brain, &mut ready_answers, &mut responding); }
                         else if narration.is_some() { speak_narration(&link, brain, &mut narration, &mut responding); }
                     }

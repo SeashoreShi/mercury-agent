@@ -24,6 +24,7 @@ import ideRoutes, { setIDEProviders } from './api/workspace-ide.js';
 import lifecycleRoutes, { setShutdownHandler } from './api/lifecycle.js';
 import mcpRoutes, { setMcpManager } from './api/mcp.js';
 import pluginRoutes from './api/plugins.js';
+import voiceRoutes from './api/voice.js';
 import { BoardManager } from '../core/board-manager.js';
 import { isBetterSqlite3Available } from '../memory/second-brain-db.js';
 
@@ -102,6 +103,7 @@ app.route('/', ideRoutes);
 app.route('/', lifecycleRoutes);
 app.route('/', mcpRoutes);
 app.route('/', pluginRoutes);
+app.route('/', voiceRoutes);
 
 // ── Legacy static assets (vendor fonts, icons, wasm — still needed by React SPA) ──
 app.get('/vendor/*', (c) => {
