@@ -48,8 +48,8 @@ export function Composer({ mode }: { mode: "chat" | "code" }) {
   const busy = agent === "thinking" || agent === "streaming" || agent === "working";
 
   return (
-    <div className="shrink-0 px-6 pb-5 pt-2">
-      <div className="mx-auto w-full max-w-[760px]">
+    <div className="shrink-0 px-8 pb-6 pt-2">
+      <div className="mx-auto w-full max-w-[780px]">
         {error && <div className="mb-2 text-xs text-red">{error}</div>}
         <div className={cx("rounded-xl border border-line bg-surface shadow-sm transition-colors focus-within:border-line-strong")}>
           <textarea
@@ -62,7 +62,7 @@ export function Composer({ mode }: { mode: "chat" | "code" }) {
             placeholder={mode === "code" ? "Describe the change…" : "Message Mercury…"}
             rows={1}
             disabled={!connected}
-            className="block w-full resize-none bg-transparent px-4 pt-3.5 text-base leading-[22px] text-ink placeholder:text-ink4 disabled:opacity-60"
+            className="block w-full resize-none bg-transparent px-4 pt-4 text-md leading-[26px] text-ink placeholder:text-ink4 disabled:opacity-60"
             aria-label="Message"
           />
           <div className="flex items-center gap-1 px-2 pb-2 pt-1">
@@ -71,7 +71,7 @@ export function Composer({ mode }: { mode: "chat" | "code" }) {
             <div className="flex-1" />
             {busy && <span className="mr-1 text-2xs text-ink4">{agent === "streaming" ? "answering" : agent === "working" ? "working" : "thinking"}…</span>}
             <Tooltip label="Send" shortcut="↵" side="top">
-              <Button variant="primary" size="sm" icon onClick={() => void submit()} disabled={!text.trim() || !connected} loading={sending} aria-label="Send">
+              <Button variant="primary" size="md" icon onClick={() => void submit()} disabled={!text.trim() || !connected} loading={sending} aria-label="Send">
                 <ArrowUp size={16} strokeWidth={2.2} />
               </Button>
             </Tooltip>
@@ -104,7 +104,7 @@ function ModelPicker() {
     <Menu
       side="top"
       trigger={
-        <button className="flex h-7 items-center gap-1 rounded-md px-2 text-xs text-ink2 hover:bg-ink/[0.06] hover:text-ink" aria-label="Model">
+        <button className="flex h-8 items-center gap-1 rounded-md px-2 text-sm text-ink2 hover:bg-ink/[0.06] hover:text-ink" aria-label="Model">
           <span className="max-w-[180px] truncate">{label}</span>
           <ChevronDown size={12} className="text-ink4" />
         </button>
@@ -137,7 +137,7 @@ function ModePicker() {
     <Menu
       side="top"
       trigger={
-        <button className={cx("flex h-7 items-center gap-1.5 rounded-md px-2 text-xs hover:bg-ink/[0.06]", allowAll ? "text-accent" : "text-amber")} aria-label="Approval mode">
+        <button className={cx("flex h-8 items-center gap-1.5 rounded-md px-2 text-sm hover:bg-ink/[0.06]", allowAll ? "text-accent" : "text-amber")} aria-label="Approval mode">
           {allowAll ? <ShieldCheck size={13} /> : <Shield size={13} />}
           {settings ? (allowAll ? "Allow All" : "Ask Me") : "…"}
         </button>

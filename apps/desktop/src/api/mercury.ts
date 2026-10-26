@@ -6,7 +6,7 @@
 import { http, ApiError } from "./client";
 import type {
   BotManifest, BotRunRecord, BotStatus, ChatMessage, ChatSettings, ChatThread, CodeStatus, HealthInfo,
-  McpServer, ModelsResponse, PairResponse, PluginItem, ReasoningChoice, Skill, DeviceSummary,
+  McpServer, ModelsResponse, CodeMode, PairResponse, PluginItem, ReasoningChoice, Skill, DeviceSummary,
 } from "./types";
 
 export const health = {
@@ -60,7 +60,7 @@ export const chat = {
 
 export const code = {
   status: () => http.get<CodeStatus>("/api/code/status"),
-  set: (state: "off" | "plan" | "execute") => http.post<{ state: string; active: boolean }>("/api/code/set", { state }),
+  set: (state: CodeMode) => http.post<{ state: string; active: boolean }>("/api/code/set", { state }),
 };
 
 export const bots = {
@@ -70,6 +70,7 @@ export const bots = {
   enable: (id: string) => http.post<{ ok: boolean }>(`/api/bots/${encodeURIComponent(id)}/enable`),
   disable: (id: string) => http.post<{ ok: boolean }>(`/api/bots/${encodeURIComponent(id)}/disable`),
   stop: (id: string) => http.post<{ ok: boolean }>(`/api/bots/${encodeURIComponent(id)}/stop`),
+  avatarUrl: (id: string) => `/api/bots/${encodeURIComponent(id)}/avatar`,
   run: (id: string) => http.post<{ accepted: boolean }>(`/api/bots/${encodeURIComponent(id)}/run`, {}),
 };
 

@@ -16,7 +16,7 @@ import { StateOrb } from "~/components/indicators/StateOrb";
 export function SettingsView({ connection, health, onSwitchConnection }: { connection: Connection; health: HealthInfo; onSwitchConnection: () => void }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex h-12 shrink-0 items-center px-4" data-tauri-drag-region>
+      <header className="flex h-[52px] shrink-0 items-center px-4" data-tauri-drag-region>
         <span className="text-sm font-medium text-ink">Settings</span>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">

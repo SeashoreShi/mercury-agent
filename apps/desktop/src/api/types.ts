@@ -29,6 +29,8 @@ export interface PairResponse {
 export interface ChatThread {
   id: string;
   title?: string;
+  alias?: string;
+  updatedAt?: string;
   messages: ChatMessage[];
   createdAt: string;
 }
@@ -41,7 +43,9 @@ export interface ToolStep {
 
 export interface ChatMessage {
   id: string;
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant" | "system" | "tool";
+  /** "message" | "tool-call" | … — how the runtime stored this entry. */
+  kind?: string;
   content: string;
   timestamp: string;
   steps?: ToolStep[];
@@ -70,9 +74,11 @@ export interface ChatSettings {
   workspace: string;
 }
 
+export type CodeMode = "off" | "auto" | "plan" | "execute";
+
 export interface CodeStatus {
   available: boolean;
-  state: "off" | "plan" | "execute";
+  state: CodeMode;
   active: boolean;
   statusText: string;
 }
@@ -101,6 +107,7 @@ export interface BotStatus {
   fleetRole?: "lead" | "crew";
   parent?: string;
   crewWorking?: number;
+  hasAvatar?: boolean;
 }
 
 export interface BotManifest {

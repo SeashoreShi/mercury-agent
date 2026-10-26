@@ -41,14 +41,16 @@ export default {
     },
     extend: {
       fontSize: {
-        "2xs": ["11px", "16px"],
-        xs: ["12px", "16px"],
-        sm: ["13px", "20px"],
-        base: ["14px", "22px"],
-        md: ["15px", "24px"],
-        lg: ["17px", "26px"],
-        xl: ["20px", "28px"],
-        "2xl": ["24px", "32px"],
+        // Reading sizes for a desktop app viewed at arm's length: UI text 14,
+        // body 15, answers 16 (see styles/base.css .prose).
+        "2xs": ["12px", "16px"],
+        xs: ["13px", "18px"],
+        sm: ["14px", "20px"],
+        base: ["15px", "24px"],
+        md: ["16px", "26px"],
+        lg: ["18px", "28px"],
+        xl: ["22px", "30px"],
+        "2xl": ["26px", "34px"],
       },
       keyframes: {
         "dot-pulse": { "0%, 80%, 100%": { opacity: "0.25" }, "40%": { opacity: "1" } },

@@ -46,7 +46,9 @@ export function openStream(path: string, handlers: StreamHandlers): StreamHandle
     let res: Response;
     try {
       res = await fetch(apiUrl(path), {
-        headers: { Accept: "text/event-stream", "Cache-Control": "no-cache", ...authHeaders(), ...(lastEventId ? { "Last-Event-ID": lastEventId } : {}) },
+        // No Cache-Control: it is not a CORS-safelisted header, and a runtime that
+        // does not list it in Access-Control-Allow-Headers blocks the stream.
+        headers: { Accept: "text/event-stream", ...authHeaders(), ...(lastEventId ? { "Last-Event-ID": lastEventId } : {}) },
         signal: controller.signal,
       });
     } catch {

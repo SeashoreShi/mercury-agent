@@ -39,7 +39,7 @@ export function SkillsView() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-4" data-tauri-drag-region>
+      <header className="flex h-[52px] shrink-0 items-center gap-3 border-b border-line px-4" data-tauri-drag-region>
         <span className="text-sm font-medium text-ink">Skills</span>
         <span className="text-xs text-ink3">{active} of {skills.length} active</span>
         <div className="flex-1" />
