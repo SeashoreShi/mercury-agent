@@ -15,6 +15,9 @@ export type AgentState = "idle" | "thinking" | "streaming" | "working" | "needs-
 interface UiState {
   view: View;
   setView(view: View): void;
+  /** Chat is showing the live Optimus voice session instead of a thread. */
+  voiceOpen: boolean;
+  setVoiceOpen(open: boolean): void;
   sidebar: boolean;
   toggleSidebar(): void;
 }
@@ -22,6 +25,8 @@ interface UiState {
 export const useUi = create<UiState>((set) => ({
   view: "chat",
   setView: (view) => set({ view }),
+  voiceOpen: false,
+  setVoiceOpen: (voiceOpen) => set({ voiceOpen }),
   sidebar: true,
   toggleSidebar: () => set((s) => ({ sidebar: !s.sidebar })),
 }));

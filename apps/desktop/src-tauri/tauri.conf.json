@@ -39,7 +39,8 @@
         "frame-src": "'none'",
         "object-src": "'none'"
       }
-    }
+    },
+    "macOSPrivateApi": true
   },
   "bundle": {
     "active": true,

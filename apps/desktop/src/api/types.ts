@@ -51,6 +51,25 @@ export interface ChatMessage {
   steps?: ToolStep[];
   /** Files sent with this message. `url` is an API path (auth required); `src` is a local preview. */
   attachments?: MessageAttachment[];
+  /** How the answer was reached (live turns only): reasoning and steps. */
+  trace?: ThoughtTrace;
+}
+
+export interface ThoughtStep {
+  id: number;
+  tool: string;
+  label: string;
+  status: "running" | "done" | "error";
+  summary?: string;
+  startedAt: number;
+  endedAt?: number;
+}
+
+export interface ThoughtTrace {
+  reasoning: string;
+  steps: ThoughtStep[];
+  startedAt: number;
+  endedAt?: number;
 }
 
 export interface MessageAttachment {

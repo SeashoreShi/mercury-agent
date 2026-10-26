@@ -7,7 +7,7 @@
 
 import { createContext, useContext } from "react";
 import { create, type StoreApi, type UseBoundStore } from "zustand";
-import type { ChatMessage, PendingPrompt } from "~/api/types";
+import type { ChatMessage, PendingPrompt, ThoughtTrace } from "~/api/types";
 import type { AgentState } from "./store";
 
 export type Surface = "chat" | "code";
@@ -21,6 +21,10 @@ export interface ConversationState {
   agent: AgentState;
   step: { total: number; current: number; tool: string } | null;
   prompts: PendingPrompt[];
+  /** The current turn's thought process, streaming. */
+  live: ThoughtTrace | null;
+  setLive(update: (live: ThoughtTrace) => ThoughtTrace): void;
+  clearLive(): void;
   setActive(id: string | null): void;
   setMessages(messages: ChatMessage[]): void;
   addMessage(message: ChatMessage): void;
@@ -45,7 +49,10 @@ function makeConversation(surface: Surface): ConversationStore {
     agent: "idle",
     step: null,
     prompts: [],
-    setActive: (activeId) => set({ activeId, prompts: [], step: null, agent: "idle" }),
+    live: null,
+    setLive: (update) => set((s) => ({ live: update(s.live ?? { reasoning: "", steps: [], startedAt: Date.now() }) })),
+    clearLive: () => set({ live: null }),
+    setActive: (activeId) => set({ activeId, prompts: [], step: null, agent: "idle", live: null }),
     setMessages: (messages) => set({ messages }),
     addMessage: (message) => set((s) => ({ messages: [...s.messages, message] })),
     appendStreaming: (text) => set((s) => ({ streaming: s.streaming + text })),

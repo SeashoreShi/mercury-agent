@@ -1,11 +1,12 @@
 import { Check, ChevronRight, Copy, Wrench } from "lucide-react";
 import { memo, useState } from "react";
-import type { ChatMessage } from "~/api/types";
+import type { ChatMessage, ThoughtTrace } from "~/api/types";
 import { Mark } from "~/components/Logo";
 import { Markdown } from "~/components/Markdown";
 import { StreamCaret } from "~/components/indicators/Thinking";
 import { ActionResult } from "~/components/indicators/Activity";
 import { Attachments } from "~/components/Attachments";
+import { ThoughtProcess } from "~/components/ThoughtProcess";
 import { cx } from "~/lib/cx";
 
 /**
@@ -43,6 +44,7 @@ export const Message = memo(function Message({ message }: { message: ChatMessage
     <div className="group flex gap-4">
       <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center" aria-hidden="true"><Mark size={22} /></span>
       <div className="min-w-0 flex-1">
+        {message.trace && <ThoughtProcess trace={message.trace} />}
         {message.steps && message.steps.length > 0 && (
           <div className="mb-3 flex flex-col gap-1">
             {message.steps.map((s, i) => <ActionResult key={i} tool={s.tool} status={s.status} detail={s.result} />)}
@@ -134,13 +136,14 @@ function ToolActivity({ content }: { content: string }) {
   );
 }
 
-export function StreamingMessage({ text }: { text: string }) {
+/** The answer being written, with its thought process above it (open while it runs). */
+export function StreamingMessage({ text, live }: { text: string; live: ThoughtTrace | null }) {
   return (
     <div className="flex gap-4">
       <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center" aria-hidden="true"><Mark size={22} /></span>
       <div className="min-w-0 flex-1">
-        <Markdown text={text} />
-        <StreamCaret />
+        {live && <ThoughtProcess trace={live} live={!text} />}
+        {text && <><Markdown text={text} streaming /><StreamCaret /></>}
       </div>
     </div>
   );

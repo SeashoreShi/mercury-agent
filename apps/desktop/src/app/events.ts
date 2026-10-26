@@ -90,20 +90,44 @@ function handleEvent(store: ConversationStore, event: string, raw: string): void
       break;
     case "thinking":
       conv.setAgent("thinking");
+      conv.setLive((l) => l);
       break;
-    case "step_start":
-    case "step_done":
-      conv.setStep({ total: Number(data.totalSteps ?? 0), current: Number(data.stepNumber ?? 0), tool: String(data.tool ?? "") });
+    case "reasoning":
+      if (data.done === true) break;
+      if (typeof data.text === "string" && data.text) conv.setLive((l) => ({ ...l, reasoning: (l.reasoning + data.text).slice(-20_000) }));
+      break;
+    case "step_start": {
+      const tool = String(data.tool ?? "");
+      conv.setStep({ total: Number(data.totalSteps ?? 0), current: Number(data.step ?? data.stepNumber ?? 0), tool });
       conv.setAgent("working");
+      conv.setLive((l) => ({ ...l, steps: [...l.steps, { id: Number(data.step ?? l.steps.length + 1), tool, label: String(data.label ?? tool), status: "running" as const, startedAt: Date.now() }].slice(-100) }));
       break;
+    }
+    case "step_done": {
+      const tool = String(data.tool ?? "");
+      const summary = typeof data.summary === "string" ? data.summary : undefined;
+      const failed = !!summary && /^(error|failed|denied|blocked)\b/i.test(summary.trim());
+      conv.setStep({ total: Number(data.totalSteps ?? 0), current: Number(data.stepNumber ?? 0), tool });
+      conv.setLive((l) => {
+        const steps = [...l.steps];
+        for (let i = steps.length - 1; i >= 0; i--) {
+          if (steps[i].status === "running" && steps[i].tool === tool) { steps[i] = { ...steps[i], status: failed ? "error" : "done", summary, endedAt: Date.now() }; break; }
+        }
+        return { ...l, steps };
+      });
+      break;
+    }
     case "text_delta":
       conv.setAgent("streaming");
       conv.appendStreaming(String(data.text ?? ""));
       break;
     case "text_done": {
       const text = String(data.fullText ?? data.text ?? raw);
+      const live = store.getState().live;
+      const trace = live && (live.reasoning || live.steps.length) ? { ...live, endedAt: Date.now(), steps: live.steps.map((st) => st.status === "running" ? { ...st, status: "done" as const, endedAt: Date.now() } : st) } : undefined;
       conv.clearStreaming();
-      conv.addMessage({ id: crypto.randomUUID(), role: "assistant", content: text, timestamp: new Date().toISOString() });
+      conv.clearLive();
+      conv.addMessage({ id: crypto.randomUUID(), role: "assistant", content: text, timestamp: new Date().toISOString(), ...(trace ? { trace } : {}) });
       conv.setStep(null);
       store.getState().setAgent(store.getState().prompts.length ? "needs-you" : "idle");
       void refreshThreads();
@@ -125,6 +149,7 @@ function handleEvent(store: ConversationStore, event: string, raw: string): void
     case "error": {
       const message = typeof data.message === "string" ? data.message : raw || "Something went wrong";
       conv.clearStreaming();
+      conv.clearLive();
       conv.setStep(null);
       conv.setAgent("idle");
       conv.addMessage({ id: crypto.randomUUID(), role: "system", content: message, timestamp: new Date().toISOString() });
@@ -214,6 +239,7 @@ export async function sendMessage(surface: Surface, content: string, attachments
   };
   store.getState().addMessage(optimistic);
   store.getState().setAgent("thinking");
+  store.getState().setLive(() => ({ reasoning: "", steps: [], startedAt: Date.now() }));
   await api.chat.send(content, id, attachments.map(({ name, data }) => ({ name, data })), code ? { programming: code.mode, cwd: code.folder ?? undefined } : undefined);
   void refreshThreads();
 }

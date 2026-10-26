@@ -8,6 +8,10 @@ import { Tooltip } from "~/components/ui/Tooltip";
 import { Mark } from "~/components/Logo";
 import { ThreadList } from "./ThreadList";
 import { Conversation } from "./Conversation";
+import { VoiceConversation } from "./VoiceConversation";
+import { OptimusFace } from "~/components/OptimusFace";
+import { useVoice, phaseOf, PHASE_LABEL } from "~/app/voice";
+import { cx } from "~/lib/cx";
 
 /**
  * Chat: sessions on the left (with New chat), one conversation. Its own
@@ -20,9 +24,19 @@ export function ChatView() {
   const threads = useChat((s) => s.threads);
   const codeIds = useCodeSessions((s) => s.sessions);
   const activeId = conversations.chat((s) => s.activeId);
+  const voiceOpen = useUi((s) => s.voiceOpen);
+  const setVoiceOpen = useUi((s) => s.setVoiceOpen);
+  const voice = useVoice();
+  const voicePhase = phaseOf(voice);
 
   const title = threads.find((t) => t.id === activeId)?.title || (activeId ? "Untitled" : "New chat");
   const codeSet = new Set(codeIds.map((c) => c.id));
+
+  // A voice session starting takes over: Chat opens on the live session.
+  const setView = useUi((s) => s.setView);
+  useEffect(() => {
+    if (voice.active) { setVoiceOpen(true); setView("chat"); }
+  }, [voice.active, voice.callId, setVoiceOpen, setView]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -41,12 +55,24 @@ export function ChatView() {
           <ThreadList
             threads={threads.filter((t) => !codeSet.has(t.id) && !(t.title ?? "").startsWith("Code · "))}
             activeId={activeId}
-            onOpen={(id) => void openThread("chat", id)}
-            onNew={() => void openThread("chat", null)}
+            onOpen={(id) => { setVoiceOpen(false); void openThread("chat", id); }}
+            onNew={() => { setVoiceOpen(false); void openThread("chat", null); }}
             newLabel="New chat"
             searchLabel="Search chats"
+            pinned={(voice.active || voice.turns.length > 0) && (
+              <button onClick={() => setVoiceOpen(true)}
+                className={cx("mb-3 flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left", voiceOpen ? "border-line-strong bg-ink/[0.07]" : "border-line bg-surface hover:border-line-strong")}>
+                <OptimusFace size={30} phase={voicePhase} />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-base font-medium text-ink">Optimus</span>
+                  <span className={cx("block truncate text-xs", voice.active ? "text-accent" : "text-ink4")}>{voice.active ? (voice.activity ?? PHASE_LABEL[voicePhase]) : "Last voice session"}</span>
+                </span>
+                {voice.active && <span className="h-2 w-2 shrink-0 animate-dot-pulse rounded-full bg-accent" aria-label="live" />}
+              </button>
+            )}
           />
         )}
+        {voiceOpen ? <VoiceConversation /> : (
         <Conversation
           header={
             <>
@@ -68,6 +94,7 @@ export function ChatView() {
           }
           composer={{ surface: "chat", placeholder: "Ask anything…" }}
         />
+        )}
       </div>
     </ConversationContext.Provider>
   );

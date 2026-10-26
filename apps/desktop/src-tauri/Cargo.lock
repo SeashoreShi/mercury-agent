@@ -2415,6 +2415,7 @@ dependencies = [
  "flate2",
  "keyring",
  "log",
+ "objc2-app-kit",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

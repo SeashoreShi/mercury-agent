@@ -6,6 +6,7 @@
 //! (../../../ui), talking to a runtime over its HTTP API.
 
 mod commands;
+mod notch;
 mod tray;
 
 use tauri::{AppHandle, Manager, WindowEvent};
@@ -44,6 +45,8 @@ pub fn run() {
             commands::secrets::secret_get,
             commands::secrets::secret_set,
             commands::secrets::secret_delete,
+            notch::notch_show,
+            notch::notch_hide,
         ])
         .setup(|app| {
             tray::install(app.handle())?;

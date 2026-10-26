@@ -10,6 +10,8 @@ import { StateOrb, LABELS } from "~/components/indicators/StateOrb";
 import { StatusButton, StatusPopover } from "~/layout/StatusBar";
 import { compact } from "~/views/bots/Usage";
 import { mercuryUi } from "./registry";
+import { useVoice, phaseOf, PHASE_LABEL } from "~/app/voice";
+import { OptimusFace } from "~/components/OptimusFace";
 
 /* The built-in status bar items. Each is a contribution like any plugin's. */
 
@@ -90,6 +92,21 @@ function BotsRunning() {
       {running.map((b) => <Line key={b.id} icon={<Bot size={13} />} title={b.name} detail={activity[b.id] ?? (b.state === "queued" ? "queued" : "working")} />)}
       <button onClick={() => setView("bots")} className="mt-1 w-full rounded-md px-1 py-1.5 text-left text-xs text-accent hover:underline">Open Bots</button>
     </StatusPopover>
+  );
+}
+
+/** Optimus voice: its face and phase while a session runs; click to open it. */
+function OptimusVoice() {
+  const v = useVoice();
+  const setView = useUi((s) => s.setView);
+  const setVoiceOpen = useUi((s) => s.setVoiceOpen);
+  if (!v.active) return null;
+  const phase = phaseOf(v);
+  return (
+    <StatusButton title="Optimus voice session" tone="accent" onClick={() => { setVoiceOpen(true); setView("chat"); }}>
+      <OptimusFace size={15} phase={phase} />
+      <span>{PHASE_LABEL[phase]}</span>
+    </StatusButton>
   );
 }
 
@@ -240,6 +257,7 @@ export function registerBuiltinStatusItems(): void {
   registered = true;
   mercuryUi.registerStatusItem({ id: "mercury.connection", title: "Connection", area: "status.left", priority: 100, render: Connection });
   mercuryUi.registerStatusItem({ id: "mercury.agent", title: "Agent state", area: "status.left", priority: 90, render: AgentState });
+  mercuryUi.registerStatusItem({ id: "mercury.optimus", title: "Optimus voice", area: "status.left", priority: 88, render: OptimusVoice });
   mercuryUi.registerStatusItem({ id: "mercury.bots", title: "Bots running", area: "status.left", priority: 85, render: BotsRunning });
   mercuryUi.registerStatusItem({ id: "mercury.background", title: "Background work", area: "status.left", priority: 80, render: Background });
   mercuryUi.registerStatusItem({ id: "mercury.schedules", title: "Schedules", area: "status.left", priority: 70, render: Schedules });

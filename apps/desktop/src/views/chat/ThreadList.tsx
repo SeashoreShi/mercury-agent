@@ -12,7 +12,7 @@ const PAGE = 40;
  * New and search on top. Renders a page at a time and adds the next page as
  * the list scrolls.
  */
-export function ThreadList({ threads, activeId, onOpen, onNew, newLabel, searchLabel, renderMeta }: {
+export function ThreadList({ threads, activeId, onOpen, onNew, newLabel, searchLabel, renderMeta, pinned }: {
   threads: ChatThread[];
   activeId: string | null;
   onOpen: (id: string) => void;
@@ -20,6 +20,8 @@ export function ThreadList({ threads, activeId, onOpen, onNew, newLabel, searchL
   newLabel: string;
   searchLabel: string;
   renderMeta?: (t: ChatThread) => React.ReactNode;
+  /** Shown above the sessions (e.g. the live Optimus voice session). */
+  pinned?: React.ReactNode;
 }) {
   const [limit, setLimit] = useState(PAGE);
   const [query, setQuery] = useState("");
@@ -66,6 +68,7 @@ export function ThreadList({ threads, activeId, onOpen, onNew, newLabel, searchL
         </label>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+        {pinned}
         {filtered.length === 0 && <p className="px-3 pt-2 text-base text-ink4">{query ? "Nothing matches." : "No sessions yet."}</p>}
         {groups.map(([day, list]) => (
           <div key={day} className="mb-5">

@@ -25,6 +25,7 @@ export function Conversation({ header, empty, composer }: { header: ReactNode; e
   const agent = useConversation((s) => s.agent);
   const step = useConversation((s) => s.step);
   const prompts = useConversation((s) => s.prompts);
+  const live = useConversation((s) => s.live);
   const scroller = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const [visible, setVisible] = useState(PAGE);
@@ -50,7 +51,7 @@ export function Conversation({ header, empty, composer }: { header: ReactNode; e
     const el = scroller.current;
     if (!el || !stickToBottom.current) return;
     el.scrollTop = el.scrollHeight;
-  }, [messages, streaming, prompts.length, loading]);
+  }, [messages, streaming, prompts.length, loading, live]);
 
   const isEmpty = !activeId && messages.length === 0 && !streaming;
 
@@ -79,8 +80,10 @@ export function Conversation({ header, empty, composer }: { header: ReactNode; e
               </button>
             )}
             {shown.map((m) => <Message key={m.id} message={m} />)}
-            {streaming && <StreamingMessage text={streaming} />}
-            {!streaming && (agent === "thinking" || agent === "working") && (
+            {(streaming || (live && (agent === "thinking" || agent === "working" || agent === "streaming" || agent === "needs-you"))) && (
+              <StreamingMessage text={streaming} live={live} />
+            )}
+            {!streaming && !live && (agent === "thinking" || agent === "working") && (
               <ThinkingDots label={agent === "working" && step?.tool ? `Running ${step.tool}` : "Thinking"} className="pl-10" />
             )}
             {prompts.map((p) => (
