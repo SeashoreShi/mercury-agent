@@ -1,8 +1,8 @@
-import { ChevronDown, Play, RefreshCw, Square } from "lucide-react";
+import { ChevronDown, Play, RefreshCw, Square, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { cx } from "~/lib/cx";
 import * as api from "~/api/mercury";
-import type { BotManifest, BotRunRecord, BotStatus } from "~/api/types";
+import type { BotManifest, BotStatus } from "~/api/types";
 import type { AgentState } from "~/app/store";
 import { useBots } from "~/app/store";
 import { refreshBots } from "~/app/events";
@@ -12,6 +12,10 @@ import { Badge, Empty, Mono, SectionTitle } from "~/components/ui/bits";
 import { StateOrb } from "~/components/indicators/StateOrb";
 import { Input } from "~/components/ui/Input";
 import { BotAvatar } from "~/components/BotAvatar";
+import { ConfirmButton } from "~/components/ui/kit";
+import { Deliverables } from "./Deliverables";
+import { Activity } from "./Activity";
+import { Usage } from "./Usage";
 
 /**
  * Bots, organised the way they work: each fleet is a lead with its crew
@@ -114,7 +118,7 @@ export function BotsView() {
       </aside>
 
       <section className="min-w-0 flex-1 overflow-y-auto">
-        {selectedFleet ? <FleetDetail fleet={selectedFleet} activity={activity} onSelect={setSelected} /> : selected ? <BotDetail id={selected} status={selectedBot} /> : <Empty title="Pick a bot" />}
+        {selectedFleet ? <FleetDetail fleet={selectedFleet} activity={activity} onSelect={setSelected} /> : selected ? <BotDetail id={selected} status={selectedBot} onDeleted={() => setSelected(null)} /> : <Empty title="Pick a bot" />}
       </section>
     </div>
   );
@@ -153,93 +157,142 @@ function describe(b: BotStatus): string {
   return "Idle";
 }
 
-function FleetDetail({ fleet, activity, onSelect }: { fleet: Fleet; activity: Record<string, string>; onSelect: (id: string) => void }) {
-  const { lead, crew } = fleet;
+type Tab = "overview" | "deliverables" | "activity" | "usage";
+
+function TabBar({ tab, onChange, fleet }: { tab: Tab; onChange: (t: Tab) => void; fleet: boolean }) {
+  const tabs: Array<{ id: Tab; label: string }> = [
+    { id: "overview", label: "Overview" },
+    { id: "deliverables", label: fleet ? "Fleet deliverables" : "Deliverables" },
+    { id: "activity", label: "Activity" },
+    { id: "usage", label: "Usage" },
+  ];
   return (
-    <div className="mx-auto flex max-w-[820px] flex-col gap-7 px-8 py-7">
-      <BotHeader id={lead.id} status={lead} subtitle={`Fleet lead · ${crew.length} crew`} />
-      <div className="flex flex-col gap-3">
-        <SectionTitle>Crew</SectionTitle>
-        <div className="grid grid-cols-2 gap-2.5 xl:grid-cols-3">
-          {crew.map((b) => (
-            <button key={b.id} onClick={() => onSelect(b.id)} className="flex items-center gap-3 rounded-lg border border-line bg-surface p-3 text-left hover:border-line-strong">
-              <span className="relative">
-                <BotAvatar id={b.id} name={b.name} hasAvatar={b.hasAvatar} size={36} dimmed={!b.enabled} />
-                <StateOrb state={orbFor(b)} size={9} className="absolute -bottom-0.5 -right-0.5 rounded-full bg-surface p-[1.5px]" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-ink">{b.name}</span>
-                <span className={cx("block truncate text-xs", b.state === "running" ? "text-accent" : "text-ink3")}>{activity[b.id] ?? describe(b)}</span>
-              </span>
-            </button>
-          ))}
-          {crew.length === 0 && <p className="text-sm text-ink4">No crew yet.</p>}
-        </div>
-      </div>
-      <BotBody id={lead.id} status={lead} />
+    <div className="flex gap-1 border-b border-line" role="tablist">
+      {tabs.map((t) => (
+        <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => onChange(t.id)}
+          className={cx("-mb-px border-b-2 px-3 pb-2.5 pt-1 text-base transition-colors", tab === t.id ? "border-accent text-ink" : "border-transparent text-ink3 hover:text-ink")}>
+          {t.label}
+        </button>
+      ))}
     </div>
   );
 }
 
-function BotDetail({ id, status }: { id: string; status: BotStatus | null }) {
+function FleetDetail({ fleet, activity, onSelect }: { fleet: Fleet; activity: Record<string, string>; onSelect: (id: string | null) => void }) {
+  const { lead, crew } = fleet;
+  const [tab, setTab] = useState<Tab>("overview");
+  useEffect(() => { setTab("overview"); }, [lead.id]);
+  const members = [lead, ...crew];
   return (
-    <div className="mx-auto flex max-w-[820px] flex-col gap-7 px-8 py-7">
-      <BotHeader id={id} status={status} />
-      <BotBody id={id} status={status} />
+    <div className="mx-auto flex max-w-[1000px] flex-col gap-6 px-8 py-7">
+      <BotHeader id={lead.id} status={lead} subtitle={`Fleet lead · ${crew.length} crew`} crewCount={crew.length} onDeleted={() => onSelect(null)} />
+      <TabBar tab={tab} onChange={setTab} fleet />
+      {tab === "overview" && (
+        <>
+          <div className="flex flex-col gap-3">
+            <SectionTitle>Crew</SectionTitle>
+            <div className="grid grid-cols-2 gap-2.5 xl:grid-cols-3">
+              {crew.map((b) => (
+                <button key={b.id} onClick={() => onSelect(b.id)} className="flex items-center gap-3 rounded-xl border border-line bg-surface p-3 text-left hover:border-line-strong">
+                  <span className="relative">
+                    <BotAvatar id={b.id} name={b.name} hasAvatar={b.hasAvatar} size={36} dimmed={!b.enabled} />
+                    <StateOrb state={orbFor(b)} size={9} className="absolute -bottom-0.5 -right-0.5 rounded-full bg-surface p-[1.5px]" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-ink">{b.name}</span>
+                    <span className={cx("block truncate text-xs", b.state === "running" ? "text-accent" : "text-ink3")}>{activity[b.id] ?? describe(b)}</span>
+                  </span>
+                </button>
+              ))}
+              {crew.length === 0 && <p className="text-sm text-ink4">No crew yet.</p>}
+            </div>
+          </div>
+          <BotBody id={lead.id} status={lead} />
+        </>
+      )}
+      {tab === "deliverables" && <Deliverables bots={members} />}
+      {tab === "activity" && <Activity bots={members} />}
+      {tab === "usage" && <Usage bots={members} />}
+    </div>
+  );
+}
+
+function BotDetail({ id, status, onDeleted }: { id: string; status: BotStatus | null; onDeleted: () => void }) {
+  const [tab, setTab] = useState<Tab>("overview");
+  useEffect(() => { setTab("overview"); }, [id]);
+  const me = [{ id, name: status?.name ?? id, hasAvatar: status?.hasAvatar }];
+  return (
+    <div className="mx-auto flex max-w-[1000px] flex-col gap-6 px-8 py-7">
+      <BotHeader id={id} status={status} onDeleted={onDeleted} />
+      <TabBar tab={tab} onChange={setTab} fleet={false} />
+      {tab === "overview" && <BotBody id={id} status={status} />}
+      {tab === "deliverables" && <Deliverables bots={me} />}
+      {tab === "activity" && <Activity bots={me} />}
+      {tab === "usage" && <Usage bots={me} />}
     </div>
   );
 }
 
 function useBot(id: string, status: BotStatus | null) {
   const [bot, setBot] = useState<BotManifest | null>(null);
-  const [journal, setJournal] = useState<BotRunRecord[]>([]);
   async function load() {
-    try {
-      const res = await api.bots.get(id);
-      setBot(res.bot);
-      setJournal(res.journal ?? []);
-    } catch {
-      setBot(null);
-    }
+    try { setBot((await api.bots.get(id)).bot); } catch { setBot(null); }
   }
   useEffect(() => { void load(); }, [id, status?.state, status?.lastRunAt, status?.enabled]);
-  return { bot, journal, reload: load };
+  return { bot, reload: load };
 }
 
-function BotHeader({ id, status, subtitle }: { id: string; status: BotStatus | null; subtitle?: string }) {
+function BotHeader({ id, status, subtitle, crewCount = 0, onDeleted }: { id: string; status: BotStatus | null; subtitle?: string; crewCount?: number; onDeleted: () => void }) {
   const { bot, reload } = useBot(id, status);
+  const [error, setError] = useState<string | null>(null);
   async function toggle(enabled: boolean) {
     try { await (enabled ? api.bots.enable(id) : api.bots.disable(id)); } catch { /* keep */ }
     void refreshBots(); void reload();
   }
+  async function remove() {
+    setError(null);
+    try {
+      await api.bots.remove(id);
+      onDeleted();
+      void refreshBots();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
   if (!bot) return <div className="h-16" />;
   return (
-    <header className="flex items-start gap-4">
-      <BotAvatar id={id} name={bot.name} hasAvatar={status?.hasAvatar} size={56} dimmed={!bot.enabled} />
-      <div className="min-w-0 flex-1">
-        <h1 className="text-xl font-medium tracking-tight text-ink">{bot.name}</h1>
-        <p className="mt-0.5 text-sm text-ink3">{subtitle ?? bot.description ?? (bot.fleetRole === "crew" ? `Crew of ${bot.parent}` : "")}</p>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Mono>{bot.id}</Mono>
-          {bot.model?.model && <Badge>{bot.model.model}</Badge>}
-          {bot.autonomy?.dailyTokenBudget && <Badge>{bot.autonomy.dailyTokenBudget.toLocaleString()} tokens/day</Badge>}
-          {status?.needsYou && <Badge tone="amber">needs you</Badge>}
+    <header className="flex flex-col gap-2">
+      <div className="flex items-start gap-4">
+        <BotAvatar id={id} name={bot.name} hasAvatar={status?.hasAvatar} size={56} dimmed={!bot.enabled} />
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl font-semibold tracking-tight text-ink">{bot.name}</h1>
+          <p className="mt-0.5 text-sm text-ink3">{subtitle ?? bot.description ?? (bot.fleetRole === "crew" ? `Crew of ${bot.parent}` : "")}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Mono>{bot.id}</Mono>
+            {bot.model?.model && <Badge>{bot.model.model}</Badge>}
+            {bot.autonomy?.dailyTokenBudget && <Badge>{bot.autonomy.dailyTokenBudget.toLocaleString()} tokens/day</Badge>}
+            {status?.needsYou && <Badge tone="amber">needs you</Badge>}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Switch id={`bot-${id}`} checked={bot.enabled} onCheckedChange={(v) => void toggle(v)} label={bot.enabled ? "On" : "Off"} />
+          {status?.state === "running" ? (
+            <Button size="sm" variant="outline" onClick={() => void api.bots.stop(id).then(refreshBots)}><Square size={13} /> Stop</Button>
+          ) : (
+            <Button size="sm" variant="outline" disabled={!bot.enabled} onClick={() => void api.bots.runNow(id).then(refreshBots)}><Play size={13} /> Run now</Button>
+          )}
+          <ConfirmButton size="sm" confirmLabel={crewCount > 0 ? `Delete fleet (${crewCount + 1} bots)?` : "Delete bot?"} onConfirm={() => void remove()}>
+            <Trash2 size={13} /> Delete
+          </ConfirmButton>
         </div>
       </div>
-      <div className="flex items-center gap-2">
-        <Switch id={`bot-${id}`} checked={bot.enabled} onCheckedChange={(v) => void toggle(v)} label={bot.enabled ? "On" : "Off"} />
-        {status?.state === "running" ? (
-          <Button size="sm" variant="outline" onClick={() => void api.bots.stop(id).then(refreshBots)}><Square size={13} /> Stop</Button>
-        ) : (
-          <Button size="sm" variant="outline" disabled={!bot.enabled} onClick={() => void api.bots.run(id).then(refreshBots)}><Play size={13} /> Run now</Button>
-        )}
-      </div>
+      {error && <p className="text-sm text-red">{error}</p>}
     </header>
   );
 }
 
 function BotBody({ id, status }: { id: string; status: BotStatus | null }) {
-  const { bot, journal } = useBot(id, status);
+  const { bot } = useBot(id, status);
   const [message, setMessage] = useState("");
   const [note, setNote] = useState<string | null>(null);
   useEffect(() => { setNote(null); setMessage(""); }, [id]);
@@ -265,12 +318,11 @@ function BotBody({ id, status }: { id: string; status: BotStatus | null }) {
         </div>
         {note && <p className="text-sm text-ink3">{note}</p>}
       </div>
-
       {bot.schedules && bot.schedules.length > 0 && (
         <div className="flex flex-col gap-2">
           <SectionTitle>Schedules</SectionTitle>
           {bot.schedules.map((s) => (
-            <div key={s.name} className="flex items-center gap-3 rounded-lg border border-line bg-surface px-3.5 py-2.5 text-sm">
+            <div key={s.name} className="flex items-center gap-3 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm">
               <span className="text-ink">{s.name}</span>
               <Mono>{s.cron}</Mono>
               <span className="min-w-0 flex-1 truncate text-sm text-ink3">{s.prompt}</span>
@@ -278,19 +330,6 @@ function BotBody({ id, status }: { id: string; status: BotStatus | null }) {
           ))}
         </div>
       )}
-
-      <div className="flex flex-col gap-2">
-        <SectionTitle>Recent runs</SectionTitle>
-        {journal.length === 0 && <p className="text-sm text-ink4">Nothing yet.</p>}
-        {journal.slice(0, 15).map((r) => (
-          <div key={r.runId} className="flex items-center gap-3 rounded-lg border border-line bg-surface px-3.5 py-2.5 text-sm">
-            <StateOrb state={r.state === "failed" ? "needs-you" : r.state === "running" ? "working" : "idle"} size={9} />
-            <span className="w-24 shrink-0 text-ink2">{ago(r.startedAt)}</span>
-            <span className="min-w-0 flex-1 truncate text-ink">{r.summary || r.error || r.state}</span>
-            <Mono>{Math.round(r.durationMs / 1000)}s · {(r.tokensIn + r.tokensOut).toLocaleString()} tok</Mono>
-          </div>
-        ))}
-      </div>
     </>
   );
 }

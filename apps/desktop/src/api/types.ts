@@ -144,6 +144,50 @@ export interface BotRunRecord {
   summary?: string;
   error?: string;
   reasonCode?: string;
+  steps?: number;
+  toolCalls?: number;
+  outcome?: string;
+}
+
+export interface Deliverable {
+  botId: string;
+  name: string;
+  bytes: number;
+  mtimeMs: number;
+  path?: string;
+  final?: boolean;
+}
+
+export interface RunTraceStep {
+  name: string;
+  ok: boolean;
+  arg?: string;
+}
+
+export interface RunTranscript {
+  record: BotRunRecord & { steps?: number; toolCalls?: number; peakInputTokens?: number; outcome?: string };
+  prompt: string;
+  output: string;
+  trace: RunTraceStep[];
+}
+
+export interface UsageBucket {
+  runs: number;
+  completed: number;
+  failed: number;
+  noOutcome: number;
+  deliverables: number;
+  tokensIn: number;
+  tokensOut: number;
+}
+
+export interface CostReport {
+  days: number;
+  bots: Array<{ id: string; name: string; parent?: string; today: UsageBucket; window: UsageBucket; cap: number; paused: boolean }>;
+  fleets: Array<{ id: string; name: string; members: number; today: UsageBucket; window: UsageBucket }>;
+  fleetToday: number;
+  fleetCap: number;
+  fleetPaused: boolean;
 }
 
 export interface BotActivityEvent {
