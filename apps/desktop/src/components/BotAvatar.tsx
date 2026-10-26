@@ -35,7 +35,7 @@ export function BotAvatar({ id, name, hasAvatar, size = 32, dimmed, className }:
 
   const style = { width: size, height: size };
   if (src) {
-    return <img src={src} alt={name} style={style} className={cx("shrink-0 rounded-[28%] object-cover", dimmed && "opacity-50 grayscale", className)} draggable={false} />;
+    return <img src={src} alt={name} style={style} className={cx("shrink-0 rounded-[28%] object-cover", dimmed && "opacity-90", className)} draggable={false} />;
   }
   return <GeneratedFace id={id} name={name} size={size} dimmed={dimmed} className={className} />;
 }
@@ -72,7 +72,7 @@ function GeneratedFace({ id, name, size, dimmed, className }: { id: string; name
   const mouthY = tri ? 52 : 60;
   const gid = `g-${id}`;
   return (
-    <svg viewBox="0 0 100 100" width={size} height={size} role="img" aria-label={name} className={cx("shrink-0", dimmed && "opacity-50 grayscale", className)}>
+    <svg viewBox="0 0 100 100" width={size} height={size} role="img" aria-label={name} className={cx("shrink-0", dimmed && "opacity-90", className)}>
       <defs>
         <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor={`hsl(${hue} 70% 62%)`} />
