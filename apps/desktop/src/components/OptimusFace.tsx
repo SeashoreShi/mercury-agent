@@ -18,7 +18,8 @@ export function OptimusFace({ size = 28, phase = "off", className }: { size?: nu
           <stop offset="1" stopColor="#7C3AED" />
         </linearGradient>
       </defs>
-      <path d="M50 4 89 26.5v47L50 96 11 73.5v-47z" fill="url(#optimus-shell)" stroke="#fff" strokeOpacity="0.25" strokeWidth="2" strokeLinejoin="round" />
+      {/* Rounded hexagon: a wide round-join stroke in the same gradient softens the corners. */}
+      <path d="M50 10 84 29.5v41L50 90 16 70.5v-41z" fill="url(#optimus-shell)" stroke="url(#optimus-shell)" strokeWidth="12" strokeLinejoin="round" />
       <rect x="22" y="36" width="56" height="24" rx="12" fill="#0B1020" opacity="0.9" />
       <g className={cx(phase === "listening" && "optimus-eyes-pulse", (phase === "thinking" || phase === "working") && "optimus-eyes-scan")}>
         <circle cx="38" cy="48" r="5.5" fill={eyes} />

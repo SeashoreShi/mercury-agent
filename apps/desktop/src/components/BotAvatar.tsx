@@ -79,7 +79,9 @@ function GeneratedFace({ id, name, size, dimmed, className }: { id: string; name
           <stop offset="1" stopColor={`hsl(${hue2} 72% 44%)`} />
         </linearGradient>
       </defs>
-      <path d={shape} fill={`url(#${gid})`} />
+      {/* The same path stroked wide with round joins softens every corner;
+          drawn at 88% so the rounded edge stays inside the frame. */}
+      <path d={shape} fill={`url(#${gid})`} stroke={`url(#${gid})`} strokeWidth={10} strokeLinejoin="round" transform="translate(6 6) scale(0.88)" />
       <circle cx={50 - eyeGap} cy={eyeY} r="5.2" fill="#fff" />
       <circle cx={50 + eyeGap} cy={eyeY} r="5.2" fill="#fff" />
       {mouth === 0 && <path d={`M${40} ${mouthY} q10 9 20 0`} stroke="#fff" strokeWidth="4.5" strokeLinecap="round" fill="none" />}
