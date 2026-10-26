@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { cx } from "~/lib/cx";
 import { useRuntimeState, useUi, type View } from "~/app/store";
 import { Mark } from "~/components/Logo";
-import { StateOrb, LABELS } from "~/components/indicators/StateOrb";
+import { LABELS } from "~/components/indicators/StateOrb";
 import { Tooltip } from "~/components/ui/Tooltip";
 
 const ITEMS: Array<{ view: View; label: string; icon: typeof MessageSquare; key: string }> = [
@@ -16,7 +16,8 @@ const ITEMS: Array<{ view: View; label: string; icon: typeof MessageSquare; key:
 ];
 
 /**
- * The left rail: the mark with the agent's state, five places, settings.
+ * The left rail: the mark, the places, settings. The agent's state lives
+ * in the top bar and status bar, not on the mark.
  * Switching is a store write, so it is instant and keeps every view's
  * scroll position and drafts.
  */
@@ -40,9 +41,8 @@ export function Rail({ connectionName }: { connectionName: string }) {
   return (
     <nav className="flex h-full w-[56px] shrink-0 flex-col items-center border-r border-line bg-soft pb-3 pt-[14px]" data-tauri-drag-region aria-label="Primary">
       <Tooltip label={`${LABELS[agent]} · ${connectionName}`}>
-        <button onClick={() => setView("chat")} className="relative mb-4 flex h-9 w-9 items-center justify-center rounded-md" aria-label="Mercury">
+        <button onClick={() => setView("chat")} className="mb-4 flex h-9 w-9 items-center justify-center rounded-md" aria-label="Mercury">
           <Mark size={26} />
-          <StateOrb state={agent} size={9} className="absolute -bottom-0.5 -right-0.5 rounded-full bg-soft p-[2px]" />
         </button>
       </Tooltip>
 
