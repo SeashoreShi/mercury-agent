@@ -3,6 +3,7 @@ import { useUi, type View } from "~/app/store";
 import { useRuntimeEvents, refreshBots, refreshThreads } from "~/app/events";
 import { usePulsePolling } from "~/app/pulse";
 import { useVoiceFeed } from "~/app/voice";
+import { useHealthStore } from "~/app/health";
 import { registerBuiltinStatusItems } from "~/extensions/builtin-status";
 import type { Connection } from "~/shell/connections";
 import type { HealthInfo } from "~/api/types";
@@ -29,6 +30,8 @@ export function Workspace({ connection, health, onSwitchConnection }: { connecti
   useRuntimeEvents(true);
   usePulsePolling(connection.id);
   useVoiceFeed(connection.id);
+
+  useEffect(() => { useHealthStore.getState().set(health); }, [health]);
 
   useEffect(() => {
     void refreshThreads();

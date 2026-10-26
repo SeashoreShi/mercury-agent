@@ -38,9 +38,17 @@ export interface ComposerProps {
   extra?: React.ReactNode;
   /** Block sending with this reason (e.g. no folder chosen). */
   blockedReason?: string;
+  /** Terminal look (Mercury Code): monospace, a ">" prompt. */
+  mono?: boolean;
+  /** Text to place in the box (e.g. a clicked suggestion). */
+  draft?: string | null;
+  onDraftConsumed?: () => void;
+  /** Shift+Tab cycles the mode; the chip shows it. */
+  onCycleMode?: () => void;
+  modeLabel?: string;
 }
 
-export function Composer({ surface, placeholder, code, extra, blockedReason }: ComposerProps) {
+export function Composer({ surface, placeholder, code, extra, blockedReason, mono, draft, onDraftConsumed, onCycleMode, modeLabel }: ComposerProps) {
   const [text, setText] = useState("");
   const [files, setFiles] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -50,6 +58,13 @@ export function Composer({ surface, placeholder, code, extra, blockedReason }: C
   const picker = useRef<HTMLInputElement>(null);
   const agent = useConversation((s) => s.agent);
   const connected = useRuntimeState((s) => s.connected);
+
+  useEffect(() => {
+    if (draft == null) return;
+    setText(draft);
+    onDraftConsumed?.();
+    requestAnimationFrame(() => { const el = ref.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } });
+  }, [draft, onDraftConsumed]);
 
   // Fit the box to its text. Re-measured when the text changes AND when the
   // box's width changes or it becomes visible (a hidden view measures 0 and a
@@ -157,6 +172,8 @@ export function Composer({ surface, placeholder, code, extra, blockedReason }: C
               ))}
             </div>
           )}
+          <div className="flex">
+          {mono && <span aria-hidden="true" className="pointer-events-none select-none pl-5 pt-4 font-mono text-md leading-[26px] text-accent">&gt;</span>}
           <textarea
             ref={ref}
             value={text}
@@ -165,13 +182,15 @@ export function Composer({ surface, placeholder, code, extra, blockedReason }: C
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
               if (e.key === "Escape" && text) { e.preventDefault(); setText(""); }
+              if (e.key === "Tab" && e.shiftKey && onCycleMode) { e.preventDefault(); onCycleMode(); }
             }}
             placeholder={!connected ? "Waiting for Mercury…" : blockedReason ?? placeholder}
             rows={1}
             disabled={!connected}
-            className="block max-h-[240px] w-full resize-none overflow-y-auto bg-transparent px-5 pb-1 pt-4 text-md leading-[26px] text-ink caret-accent placeholder:truncate placeholder:text-ink4"
+            className={cx("block max-h-[240px] w-full resize-none overflow-y-auto bg-transparent pb-1 pt-4 text-md leading-[26px] text-ink caret-accent placeholder:truncate placeholder:text-ink4", mono ? "pl-3 pr-5 font-mono text-[14.5px]" : "px-5")}
             aria-label="Message"
           />
+          </div>
           <div className="flex flex-wrap items-center gap-1 px-3 pb-3 pt-1.5">
             <Tooltip label="Attach images or PDFs" side="top">
               <Button variant="ghost" size="md" icon onClick={() => picker.current?.click()} disabled={!connected || files.length >= MAX_FILES} aria-label="Attach">
@@ -180,6 +199,13 @@ export function Composer({ surface, placeholder, code, extra, blockedReason }: C
             </Tooltip>
             <input ref={picker} type="file" accept="image/*,application/pdf" multiple hidden onChange={(e) => { if (e.target.files) void addFiles(e.target.files); e.target.value = ""; }} />
             {extra}
+            {modeLabel && (
+              <Tooltip label="Switch mode" shortcut="⇧⇥" side="top">
+                <button onClick={onCycleMode} className="flex h-8 items-center gap-1.5 rounded-md px-2 font-mono text-sm text-cyan hover:bg-ink/[0.06]" aria-label="Switch mode">
+                  <span className="text-ink4">mode</span> {modeLabel}
+                </button>
+              </Tooltip>
+            )}
             <ModelPicker />
             {surface === "chat" && <ModePicker />}
             <div className="flex-1" />

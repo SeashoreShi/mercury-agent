@@ -7,8 +7,9 @@ import { conversations, ConversationContext, useCodeSessions } from "~/app/conve
 import { openThread, type CodeTurn } from "~/app/events";
 import { Button } from "~/components/ui/Button";
 import { Tooltip } from "~/components/ui/Tooltip";
-import { Segmented } from "~/components/ui/bits";
-import { PixelWordmark } from "~/components/PixelWordmark";
+import { CodeHome } from "./CodeHome";
+import { useRuntimeState } from "~/app/store";
+import { useHealth } from "~/app/health";
 import { ThreadList } from "~/views/chat/ThreadList";
 import { Conversation } from "~/views/chat/Conversation";
 import { useConnections } from "~/shell/connections";
@@ -44,6 +45,10 @@ export function CodeView() {
   const [pendingFolder, setPendingFolder] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [branch, setBranch] = useState<string>("");
+  const [draft, setDraft] = useState<string | null>(null);
+  const model = useRuntimeState((s) => s.model);
+  const health = useHealth();
+  const cycleMode = () => setMode((m) => MODES[(MODES.findIndex((x) => x.value === m) + 1) % MODES.length].value);
 
   useEffect(() => { if (connection) loadSessions(`${connection.id}@${connection.baseUrl}`); }, [connection?.id, connection?.baseUrl, loadSessions]);
 
@@ -103,26 +108,25 @@ export function CodeView() {
               </button>
               {branch && <span className="flex items-center gap-1 font-mono text-xs text-ink3"><GitBranch size={13} />{branch}</span>}
               <div className="flex-1" />
-              <Tooltip label={MODES.find((m) => m.value === mode)?.hint ?? ""} side="bottom">
-                <span><Segmented<Mode> value={mode} onChange={setMode} options={MODES.map(({ value, label }) => ({ value, label }))} /></span>
-              </Tooltip>
               <Tooltip label={panelOpen ? "Hide project" : "Show project"} side="bottom">
                 <Button variant="ghost" size="sm" icon onClick={() => setPanelOpen((o) => !o)} aria-label="Toggle project panel"><PanelRight size={16} /></Button>
               </Tooltip>
             </>
           }
           empty={
-            <div className="flex flex-col items-center gap-5 px-6 pb-24 text-center">
-              <PixelWordmark />
-              <p className="max-w-[480px] text-base text-ink3">
-                {folder
-                  ? <>Working in <span className="font-mono text-ink2">{shortPath(folder)}</span>. Describe what to build or fix; Mercury reads, edits, runs and checks its work.</>
-                  : "Open a project folder to start. Mercury works inside it: reads, edits, runs, and asks before anything that can't be undone."}
-              </p>
-              {!folder && <Button variant="primary" size="lg" onClick={() => setPicking(true)}><FolderOpen size={16} /> Open a folder</Button>}
-            </div>
+            <CodeHome
+              folder={folder}
+              branch={branch}
+              version={health?.version ?? ""}
+              model={model}
+              mode={mode}
+              recent={codeThreads.filter((t) => !folder || folderOf(t.id) === folder).sort((a, b) => (b.updatedAt || b.createdAt).localeCompare(a.updatedAt || a.createdAt))}
+              onPickFolder={() => setPicking(true)}
+              onOpenSession={(id) => void openThread("code", id)}
+              onSuggest={(t) => setDraft(t)}
+            />
           }
-          composer={{ surface: "code", placeholder: "Describe the change…", code: turn, blockedReason: folder ? undefined : "Open a project folder first" }}
+          composer={{ surface: "code", placeholder: 'Try "fix the failing test in src/…"', code: turn, blockedReason: folder ? undefined : "Open a project folder first", mono: true, draft, onDraftConsumed: () => setDraft(null), onCycleMode: cycleMode, modeLabel: mode }}
         />
 
         {panelOpen && folder && <ProjectPanel folder={folder} />}
