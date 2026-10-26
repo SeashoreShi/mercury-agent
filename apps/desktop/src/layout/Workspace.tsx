@@ -39,7 +39,7 @@ export function Workspace({ connection, health, onSwitchConnection }: { connecti
       <div className="flex min-h-0 flex-1">
         <Rail connectionName={connection.name} />
         <main className="relative flex min-w-0 flex-1 flex-col">
-          <Pane active={view === "chat"}><ChatView mode="chat" /></Pane>
+          <Pane active={view === "chat"}><ChatView /></Pane>
           <Pane active={view === "code"}><CodeView /></Pane>
           <Pane active={view === "bots"}><BotsView /></Pane>
           <Pane active={view === "plugins"}><PluginsView /></Pane>

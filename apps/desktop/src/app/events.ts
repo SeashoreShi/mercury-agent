@@ -1,30 +1,23 @@
 /* ═══════════════════════════════════════════════════════════════
-   Live events from the runtime → app state. One chat stream (scoped to
-   the active thread) and one bots stream, for as long as a connection is
-   up. Every view reads the stores; nothing polls for what streams.
+   Live events from the runtime → app state. Each conversation surface
+   (Chat, Code) has its own event stream scoped to its own session, so
+   their activity never mixes; plus one bots stream. Nothing polls for
+   what streams.
    ═══════════════════════════════════════════════════════════════ */
 
 import { useEffect } from "react";
 import { openStream } from "~/api/stream";
 import * as api from "~/api/mercury";
-import type { BotActivityEvent, ChatMessage, PendingPrompt } from "~/api/types";
-import { useBots, useChat, useRuntimeState } from "./store";
+import type { BotActivityEvent, ChatMessage, CodeMode, PendingPrompt } from "~/api/types";
+import { useBots, useChat, useRuntimeState, type AgentState } from "./store";
+import { conversations, useCodeSessions, type ConversationStore, type Surface } from "./conversation";
 
 export function useRuntimeEvents(enabled: boolean): void {
-  const activeId = useChat((s) => s.activeId);
+  const chatId = conversations.chat((s) => s.activeId);
+  const codeId = conversations.code((s) => s.activeId);
 
-  useEffect(() => {
-    if (!enabled) return;
-    const runtime = useRuntimeState.getState();
-    const query = activeId ? `?sessionId=${encodeURIComponent(activeId)}` : "";
-    const stream = openStream(`/api/chat/events${query}`, {
-      onOpen: () => useRuntimeState.getState().setConnected(true),
-      onClose: (reason) => { if (reason !== "closed") useRuntimeState.getState().setConnected(false); },
-      onEvent: (event, raw) => handleChatEvent(event, raw),
-    });
-    runtime.setAgent(runtime.connected ? runtime.agent : "idle");
-    return () => stream.close();
-  }, [enabled, activeId]);
+  useSurfaceStream(enabled, "chat", chatId, true);
+  useSurfaceStream(enabled, "code", codeId, false);
 
   useEffect(() => {
     if (!enabled) return;
@@ -39,6 +32,41 @@ export function useRuntimeEvents(enabled: boolean): void {
     });
     return () => stream.close();
   }, [enabled]);
+
+  // The chrome (rail, status bar) shows one agent state: the busiest surface.
+  useEffect(() => {
+    const rank: Record<AgentState, number> = { "needs-you": 5, working: 4, streaming: 3, thinking: 2, idle: 1, offline: 0 };
+    const sync = () => {
+      if (!useRuntimeState.getState().connected) return;
+      const a = conversations.chat.getState();
+      const b = conversations.code.getState();
+      const top = rank[a.agent] >= rank[b.agent] ? a : b;
+      useRuntimeState.setState({ agent: top.agent, step: top.step, prompts: [...a.prompts, ...b.prompts] });
+    };
+    const offA = conversations.chat.subscribe(sync);
+    const offB = conversations.code.subscribe(sync);
+    return () => { offA(); offB(); };
+  }, []);
+}
+
+/**
+ * One stream per surface. Unscoped (no session yet) the runtime would send
+ * every web event; only the chat surface listens unscoped, so a brand-new
+ * Code view never shows Chat's traffic.
+ */
+function useSurfaceStream(enabled: boolean, surface: Surface, sessionId: string | null, tracksConnection: boolean): void {
+  useEffect(() => {
+    if (!enabled) return;
+    if (!sessionId && surface !== "chat") return;
+    const store = conversations[surface];
+    const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
+    const stream = openStream(`/api/chat/events${query}`, {
+      onOpen: () => { if (tracksConnection) useRuntimeState.getState().setConnected(true); },
+      onClose: (reason) => { if (tracksConnection && reason !== "closed") useRuntimeState.getState().setConnected(false); },
+      onEvent: (event, raw) => handleEvent(store, event, raw),
+    });
+    return () => stream.close();
+  }, [enabled, surface, sessionId, tracksConnection]);
 }
 
 function safeJson<T>(raw: string): T | null {
@@ -49,55 +77,57 @@ function safeJson<T>(raw: string): T | null {
   }
 }
 
-function handleChatEvent(event: string, raw: string): void {
-  const rt = useRuntimeState.getState();
-  const chat = useChat.getState();
+function handleEvent(store: ConversationStore, event: string, raw: string): void {
+  const conv = store.getState();
   const data = safeJson<Record<string, unknown>>(raw) ?? {};
+  // A scoped stream may still carry another session's events on old runtimes.
+  const eventSession = typeof data.sessionId === "string" ? data.sessionId : null;
+  if (eventSession && conv.activeId && eventSession !== conv.activeId) return;
   switch (event) {
     case "connected":
     case "provider":
-      rt.setProvider(String(data.provider ?? ""), String(data.model ?? ""));
+      useRuntimeState.getState().setProvider(String(data.provider ?? ""), String(data.model ?? ""));
       break;
     case "thinking":
-      rt.setAgent("thinking");
+      conv.setAgent("thinking");
       break;
     case "step_start":
     case "step_done":
-      rt.setStep({ total: Number(data.totalSteps ?? 0), current: Number(data.stepNumber ?? 0), tool: String(data.tool ?? "") });
-      rt.setAgent("working");
+      conv.setStep({ total: Number(data.totalSteps ?? 0), current: Number(data.stepNumber ?? 0), tool: String(data.tool ?? "") });
+      conv.setAgent("working");
       break;
     case "text_delta":
-      rt.setAgent("streaming");
-      chat.appendStreaming(String(data.text ?? ""));
+      conv.setAgent("streaming");
+      conv.appendStreaming(String(data.text ?? ""));
       break;
     case "text_done": {
       const text = String(data.fullText ?? data.text ?? raw);
-      chat.clearStreaming();
-      chat.addMessage({ id: crypto.randomUUID(), role: "assistant", content: text, timestamp: new Date().toISOString() });
-      rt.setStep(null);
-      rt.setAgent(rt.prompts.length ? "needs-you" : "idle");
+      conv.clearStreaming();
+      conv.addMessage({ id: crypto.randomUUID(), role: "assistant", content: text, timestamp: new Date().toISOString() });
+      conv.setStep(null);
+      store.getState().setAgent(store.getState().prompts.length ? "needs-you" : "idle");
       void refreshThreads();
       break;
     }
     case "permission_request":
-      rt.addPrompt(toPrompt("permission", data, String(data.prompt ?? "")));
+      conv.addPrompt(toPrompt("permission", data, String(data.prompt ?? "")));
       break;
     case "permission_continue":
-      rt.addPrompt(toPrompt("continue", data, String(data.question ?? "")));
+      conv.addPrompt(toPrompt("continue", data, String(data.question ?? "")));
       break;
     case "choice_prompt":
-      rt.addPrompt(toPrompt("choice", data, String(data.question ?? "")));
+      conv.addPrompt(toPrompt("choice", data, String(data.question ?? "")));
       break;
     case "permission_resolved":
     case "choice_resolved":
-      if (typeof data.id === "string") rt.removePrompt(data.id);
+      if (typeof data.id === "string") conv.removePrompt(data.id);
       break;
     case "error": {
       const message = typeof data.message === "string" ? data.message : raw || "Something went wrong";
-      chat.clearStreaming();
-      rt.setStep(null);
-      rt.setAgent("idle");
-      chat.addMessage({ id: crypto.randomUUID(), role: "system", content: message, timestamp: new Date().toISOString() });
+      conv.clearStreaming();
+      conv.setStep(null);
+      conv.setAgent("idle");
+      conv.addMessage({ id: crypto.randomUUID(), role: "system", content: message, timestamp: new Date().toISOString() });
       break;
     }
     default:
@@ -138,34 +168,39 @@ export async function refreshBots(): Promise<void> {
   } catch { /* bots unavailable on this runtime */ }
 }
 
-export async function openThread(id: string | null): Promise<void> {
-  const chat = useChat.getState();
-  chat.setActive(id);
-  chat.clearStreaming();
+export async function openThread(surface: Surface, id: string | null): Promise<void> {
+  const store = conversations[surface];
+  store.getState().setActive(id);
+  store.getState().clearStreaming();
   if (!id) {
-    chat.setMessages([]);
+    store.getState().setMessages([]);
     return;
   }
-  chat.setLoading(true);
+  store.getState().setLoading(true);
   try {
     const thread = await api.chat.thread(id);
-    useChat.getState().setMessages(thread.messages ?? []);
+    store.getState().setMessages(thread.messages ?? []);
   } catch {
-    useChat.getState().setMessages([]);
+    store.getState().setMessages([]);
   } finally {
-    useChat.getState().setLoading(false);
+    store.getState().setLoading(false);
   }
 }
 
-export async function sendMessage(content: string, attachments: Array<{ name: string; data: string; mime?: string }> = []): Promise<void> {
-  const chat = useChat.getState();
-  const rt = useRuntimeState.getState();
-  let id = chat.activeId;
+export interface CodeTurn {
+  mode: Exclude<CodeMode, "off">;
+  folder: string | null;
+}
+
+export async function sendMessage(surface: Surface, content: string, attachments: Array<{ name: string; data: string; mime?: string }> = [], code?: CodeTurn): Promise<void> {
+  const store = conversations[surface];
+  let id = store.getState().activeId;
   if (!id) {
-    const thread = await api.chat.createThread();
+    const thread = await api.chat.createThread(surface === "code" ? `Code · ${content.slice(0, 40)}` : undefined);
     id = thread.id;
-    chat.setActive(id);
-    chat.setMessages([]);
+    store.getState().setActive(id);
+    store.getState().setMessages([]);
+    if (surface === "code") useCodeSessions.getState().upsert({ id, folder: code?.folder ?? null, createdAt: new Date().toISOString() });
   }
   const shown = content || `(Attached: ${attachments.map((a) => a.name).join(", ")})`;
   const optimistic: ChatMessage = {
@@ -177,13 +212,13 @@ export async function sendMessage(content: string, attachments: Array<{ name: st
       ? { attachments: attachments.map((a) => ({ name: a.name, kind: a.mime?.startsWith("image/") ? "image" : "document", mime: a.mime, src: a.mime?.startsWith("image/") ? `data:${a.mime};base64,${a.data}` : undefined })) }
       : {}),
   };
-  useChat.getState().addMessage(optimistic);
-  rt.setAgent("thinking");
-  await api.chat.send(content, id, attachments.map(({ name, data }) => ({ name, data })));
+  store.getState().addMessage(optimistic);
+  store.getState().setAgent("thinking");
+  await api.chat.send(content, id, attachments.map(({ name, data }) => ({ name, data })), code ? { programming: code.mode, cwd: code.folder ?? undefined } : undefined);
   void refreshThreads();
 }
 
-export async function answerPrompt(prompt: PendingPrompt, value: string | null): Promise<void> {
+export async function answerPrompt(store: ConversationStore, prompt: PendingPrompt, value: string | null): Promise<void> {
   await api.chat.answer(prompt.id, value ?? "", prompt.targetId);
-  useRuntimeState.getState().removePrompt(prompt.id);
+  store.getState().removePrompt(prompt.id);
 }

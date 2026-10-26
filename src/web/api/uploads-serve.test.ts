@@ -20,7 +20,7 @@ describe('stored uploads', () => {
 
   it('round-trips: stored file → ref → resolved path', () => {
     const upload = storeInlineAttachments([{ name: 'cat.png', data: PNG }], new Date('2026-10-26T00:00:00Z'));
-    expect(upload.ok).toBe(true);
+    if (!upload.ok) throw new Error(upload.error);
     const refs = attachmentRefs(upload.attachments);
     expect(refs).toHaveLength(1);
     expect(refs[0].ref).toMatch(/^2026-10\/[0-9a-f-]{36}-cat\.png$/);
@@ -50,6 +50,7 @@ describe('stored uploads', () => {
   it('serves the bytes with their real type, and 404s anything else', async () => {
     const { default: chatRoutes } = await import('./chat.js');
     const upload = storeInlineAttachments([{ name: 'cat.png', data: PNG }]);
+    if (!upload.ok) throw new Error(upload.error);
     const [ref] = attachmentRefs(upload.attachments);
     const ok = await chatRoutes.request(`http://127.0.0.1:6174/api/chat/uploads/${ref.ref}`);
     expect(ok.status).toBe(200);

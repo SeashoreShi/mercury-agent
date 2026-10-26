@@ -18,7 +18,7 @@ import { createProvider, ProviderRegistry as ProviderRegistryImpl } from '../pro
 import type { BaseProvider } from '../providers/base.js';
 import { Lifecycle } from './lifecycle.js';
 import { Scheduler } from './scheduler.js';
-import { ProgrammingMode } from './programming-mode.js';
+import { ProgrammingMode, scopedProgrammingState, type ProgrammingSnapshot } from './programming-mode.js';
 import { ResearchMode } from './research-mode.js';
 import { SaverMode, NORMAL_HISTORY_WINDOW } from './saver-mode.js';
 import { BackgroundTaskManager } from './background-tasks.js';
@@ -1798,6 +1798,45 @@ export class Agent {
     this.syncBgTasksToTui();
   }
 
+  /**
+   * Session-scoped coding. A message that names a programming mode (Mercury
+   * Desktop's Code surface) runs with THAT session's mode, plan and folder;
+   * everything else (terminal, chat, other sessions) keeps the global mode.
+   * Turns are serial (processQueue), so a swap-run-restore is race-free.
+   */
+  private readonly sessionProgramming = new Map<string, ProgrammingSnapshot>();
+
+  private async withSessionProgramming(msg: ChannelMessage, run: () => Promise<void>): Promise<void> {
+    const requested = scopedProgrammingState(msg.metadata?.programming);
+    const sessionKey = typeof msg.metadata?.sessionId === 'string' ? msg.metadata.sessionId : msg.sessionId;
+    if (!requested || !sessionKey) return run();
+    const globalMode = this.programmingMode.snapshot();
+    const globalCwd = this.capabilities.getCwd();
+    const cwd = typeof msg.metadata?.programmingCwd === 'string' ? msg.metadata.programmingCwd : null;
+    const saved = this.sessionProgramming.get(sessionKey);
+    this.programmingMode.restore({
+      state: requested,
+      projectContext: cwd ?? saved?.projectContext ?? null,
+      // A plan made in this session stays with this session.
+      lastPlan: saved?.lastPlan ?? null,
+    });
+    if (cwd) {
+      this.capabilities.setCwd(cwd);
+      this.capabilities.permissions.addTempScope(cwd, true, true);
+    }
+    try {
+      await run();
+    } finally {
+      this.sessionProgramming.set(sessionKey, this.programmingMode.snapshot());
+      if (this.sessionProgramming.size > 200) {
+        const oldest = this.sessionProgramming.keys().next().value;
+        if (oldest !== undefined) this.sessionProgramming.delete(oldest);
+      }
+      this.programmingMode.restore(globalMode);
+      if (cwd) this.capabilities.setCwd(globalCwd);
+    }
+  }
+
   private async processQueue(): Promise<void> {
     if (this.processing) return;
     if (this.messageQueue.length === 0) return;
@@ -1814,7 +1853,7 @@ export class Agent {
         this.currentWorkKey = item.workKey ?? null;
         try {
           if (item.workKey) this.workLedger.markRunning(item.workKey);
-          await this.handleMessage(msg);
+          await this.withSessionProgramming(msg, () => this.handleMessage(msg));
           if (item.workKey && this.workLedger.get(item.workKey)?.status === 'running') {
             this.workLedger.markFailed(item.workKey, 'Work ended without producing a durable final response');
           }

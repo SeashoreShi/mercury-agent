@@ -32,6 +32,8 @@ export const API_FEATURES: readonly string[] = Object.freeze([
   'mcp',               // /api/mcp/*
   'boards',            // /api/boards/*
   'brain',             // /api/brain/*
+  'code.session',      // POST /api/chat/send { programming, cwd } — per-session coding
+  'chat.uploads',      // attachments on messages + GET /api/chat/uploads/:month/:file
 ]);
 
 export interface ApiContractInfo {

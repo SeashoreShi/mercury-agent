@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { scopedProgrammingState } from '../../core/programming-mode.js';
 import { storeInlineAttachments, attachmentRefs, resolveUploadRef, uploadMime } from './uploads.js';
 import type { WebChannel } from '../../channels/web.js';
 import type { ProgrammingMode, ProgrammingModeState } from '../../core/programming-mode.js';
@@ -169,6 +170,10 @@ chat.post('/api/chat/send', async (c) => {
     threadId?: string;
     /** Base64 files: photos and PDFs become real attachments for this turn. */
     attachments?: unknown;
+    /** Session-scoped coding: 'auto' | 'plan' | 'execute' for this turn only. */
+    programming?: unknown;
+    /** Folder the coding turn works in (an existing directory). */
+    cwd?: unknown;
   }>();
   const content = body.content?.trim() ?? '';
   const upload = storeInlineAttachments(body.attachments);
@@ -193,7 +198,17 @@ chat.post('/api/chat/send', async (c) => {
     session ??= sessions.getOrCreateBound('web', 'web:default');
     // Models reject an empty text block, so a photo sent alone says what it is.
     const text = content || `(Attached: ${upload.attachments.map(a => a.name).join(', ')})`;
-    webChannel.emitMessageInThread(text, session.id, session.id, undefined, undefined, undefined, upload.attachments);
+    const programming = scopedProgrammingState(body.programming);
+    let codeCwd: string | undefined;
+    if (programming && typeof body.cwd === 'string' && body.cwd.trim()) {
+      const resolvedCwd = resolve(body.cwd.trim());
+      if (!existsSync(resolvedCwd) || !statSync(resolvedCwd).isDirectory()) {
+        for (const a of upload.attachments) rmSync(a.path, { force: true });
+        return c.json({ error: `Not a folder: ${resolvedCwd}` }, 400);
+      }
+      codeCwd = resolvedCwd;
+    }
+    webChannel.emitMessageInThread(text, session.id, session.id, undefined, undefined, undefined, upload.attachments, programming ? { programming, cwd: codeCwd } : undefined);
     return c.json({
       sent: true,
       sessionId: session.id,

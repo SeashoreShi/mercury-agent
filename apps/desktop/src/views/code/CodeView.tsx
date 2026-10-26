@@ -1,56 +1,141 @@
+import { FolderOpen, GitBranch, PanelLeft, PanelRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import * as api from "~/api/mercury";
-import type { ChatSettings, CodeMode, CodeStatus } from "~/api/types";
-import { Segmented, Mono } from "~/components/ui/bits";
+import type { CodeMode } from "~/api/types";
+import { useChat, useUi } from "~/app/store";
+import { conversations, ConversationContext, useCodeSessions } from "~/app/conversation";
+import { openThread, type CodeTurn } from "~/app/events";
+import { Button } from "~/components/ui/Button";
 import { Tooltip } from "~/components/ui/Tooltip";
-import { ChatView } from "~/views/chat/ChatView";
+import { Segmented } from "~/components/ui/bits";
+import { PixelWordmark } from "~/components/PixelWordmark";
+import { ThreadList } from "~/views/chat/ThreadList";
+import { Conversation } from "~/views/chat/Conversation";
+import { useConnections } from "~/shell/connections";
+import { ProjectPanel } from "./ProjectPanel";
+import { FolderPicker } from "./FolderPicker";
 
-/**
- * Code: the same conversation with the runtime's programming mode on,
- * driven by /api/code/status and /api/code/set.
- *   Off      plain chat
- *   Auto     Mercury decides when a request is a coding task
- *   Plan     it plans and waits for you before changing anything
- *   Execute  it plans and carries out the plan
- */
-const MODES: Array<{ value: CodeMode; label: string; hint: string }> = [
-  { value: "off", label: "Off", hint: "Plain chat" },
-  { value: "auto", label: "Auto", hint: "Mercury decides when a request is a coding task" },
+type Mode = Exclude<CodeMode, "off">;
+
+const MODES: Array<{ value: Mode; label: string; hint: string }> = [
+  { value: "auto", label: "Auto", hint: "Plans and builds in one flow" },
   { value: "plan", label: "Plan", hint: "Plans first and waits for you" },
-  { value: "execute", label: "Execute", hint: "Plans and carries it out" },
+  { value: "execute", label: "Execute", hint: "Carries out the plan" },
 ];
 
+/**
+ * Mercury Code: its own sessions, its own conversation, a project folder
+ * per session, and the project on the right (changes in real time, files,
+ * preview). Programming is always on here — only how it works (Auto, Plan,
+ * Execute) is a choice — and it applies to this session only: the runtime
+ * swaps it in per turn, so Chat and the terminal are untouched.
+ */
 export function CodeView() {
-  const [status, setStatus] = useState<CodeStatus | null>(null);
-  const [settings, setSettings] = useState<ChatSettings | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const view = useUi((s) => s.view);
+  const threads = useChat((s) => s.threads);
+  const sessions = useCodeSessions((s) => s.sessions);
+  const upsert = useCodeSessions((s) => s.upsert);
+  const loadSessions = useCodeSessions((s) => s.load);
+  const activeId = conversations.code((s) => s.activeId);
+  const connection = useConnections((s) => s.connections.find((c) => c.id === s.activeId));
+  const [listOpen, setListOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [mode, setMode] = useState<Mode>("auto");
+  const [pendingFolder, setPendingFolder] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [branch, setBranch] = useState<string>("");
 
-  async function load() {
-    try { setStatus(await api.code.status()); } catch { setStatus(null); }
-    try { setSettings(await api.chat.settings()); } catch { setSettings(null); }
+  useEffect(() => { if (connection) loadSessions(`${connection.id}@${connection.baseUrl}`); }, [connection?.id, connection?.baseUrl, loadSessions]);
+
+  const session = sessions.find((s) => s.id === activeId) ?? null;
+  const folder = session?.folder ?? pendingFolder;
+
+  // Git and file endpoints follow the runtime's workspace root: point it at this session's folder.
+  useEffect(() => {
+    if (!folder || view !== "code") return;
+    void api.workspace.setRoot(folder).then(() => api.workspace.info()).then((i) => setBranch(i.isGit ? i.branch : "")).catch(() => setBranch(""));
+  }, [folder, view]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (view !== "code") return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n" && !e.shiftKey) { e.preventDefault(); void openThread("code", null); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [view]);
+
+  function chooseFolder(path: string) {
+    setPicking(false);
+    if (session) upsert({ ...session, folder: path });
+    else setPendingFolder(path);
   }
-  useEffect(() => { void load(); }, []);
 
-  async function setMode(state: CodeMode) {
-    setError(null);
-    try { await api.code.set(state); } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
-    void load();
-  }
+  const ids = new Set(sessions.map((s) => s.id));
+  const codeThreads = threads.filter((t) => ids.has(t.id));
+  const folderOf = (id: string) => sessions.find((s) => s.id === id)?.folder ?? null;
+  const turn: CodeTurn = { mode, folder };
 
-  const current = MODES.find((m) => m.value === (status?.state ?? "off"));
-  const header = (
-    <div className="flex items-center gap-3">
-      <Tooltip label={current?.hint ?? ""} side="bottom">
-        <span>
-          <Segmented<CodeMode> value={status?.state ?? "off"} onChange={(v) => void setMode(v)} options={MODES.map(({ value, label }) => ({ value, label }))} />
-        </span>
-      </Tooltip>
-      {status?.statusText && <span className="truncate text-xs text-ink3">{status.statusText}</span>}
-      {settings?.workspace && <Mono className="truncate">{settings.workspace}</Mono>}
-      {status && !status.available && <span className="text-xs text-ink4">Not available on this runtime.</span>}
-      {error && <span className="text-xs text-red">{error}</span>}
-    </div>
+  return (
+    <ConversationContext.Provider value={conversations.code}>
+      <div className="flex h-full min-h-0">
+        {listOpen && (
+          <ThreadList
+            threads={codeThreads}
+            activeId={activeId}
+            onOpen={(id) => void openThread("code", id)}
+            onNew={() => { setPendingFolder(folder); void openThread("code", null); }}
+            newLabel="New session"
+            searchLabel="Search sessions"
+            renderMeta={(t) => { const f = folderOf(t.id); return f ? <span className="block truncate font-mono text-xs text-ink4">{shortPath(f)}</span> : null; }}
+          />
+        )}
+
+        <Conversation
+          header={
+            <>
+              <Tooltip label={listOpen ? "Hide sessions" : "Show sessions"} side="bottom">
+                <Button variant="ghost" size="sm" icon onClick={() => setListOpen((o) => !o)} aria-label="Toggle sessions"><PanelLeft size={16} /></Button>
+              </Tooltip>
+              <button onClick={() => setPicking(true)} className="flex h-8 min-w-0 items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-sm hover:border-line-strong" title={folder ?? "Choose a project folder"}>
+                <FolderOpen size={15} className="shrink-0 text-ink3" />
+                <span className="truncate font-medium text-ink">{folder ? baseName(folder) : "Open a folder…"}</span>
+              </button>
+              {branch && <span className="flex items-center gap-1 font-mono text-xs text-ink3"><GitBranch size={13} />{branch}</span>}
+              <div className="flex-1" />
+              <Tooltip label={MODES.find((m) => m.value === mode)?.hint ?? ""} side="bottom">
+                <span><Segmented<Mode> value={mode} onChange={setMode} options={MODES.map(({ value, label }) => ({ value, label }))} /></span>
+              </Tooltip>
+              <Tooltip label={panelOpen ? "Hide project" : "Show project"} side="bottom">
+                <Button variant="ghost" size="sm" icon onClick={() => setPanelOpen((o) => !o)} aria-label="Toggle project panel"><PanelRight size={16} /></Button>
+              </Tooltip>
+            </>
+          }
+          empty={
+            <div className="flex flex-col items-center gap-5 px-6 pb-24 text-center">
+              <PixelWordmark />
+              <p className="max-w-[480px] text-base text-ink3">
+                {folder
+                  ? <>Working in <span className="font-mono text-ink2">{shortPath(folder)}</span>. Describe what to build or fix; Mercury reads, edits, runs and checks its work.</>
+                  : "Open a project folder to start. Mercury works inside it: reads, edits, runs, and asks before anything that can't be undone."}
+              </p>
+              {!folder && <Button variant="primary" size="lg" onClick={() => setPicking(true)}><FolderOpen size={16} /> Open a folder</Button>}
+            </div>
+          }
+          composer={{ surface: "code", placeholder: "Describe the change…", code: turn, blockedReason: folder ? undefined : "Open a project folder first" }}
+        />
+
+        {panelOpen && folder && <ProjectPanel folder={folder} />}
+      </div>
+      <FolderPicker open={picking} onOpenChange={setPicking} onPick={chooseFolder} initial={folder ?? ""} local={connection?.kind === "local"} />
+    </ConversationContext.Provider>
   );
+}
 
-  return <ChatView mode="code" header={header} />;
+function baseName(p: string): string {
+  return p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
+}
+
+export function shortPath(p: string): string {
+  return p.replace(/^\/Users\/[^/]+/, "~").replace(/^[A-Z]:\\Users\\[^\\]+/i, "~");
 }

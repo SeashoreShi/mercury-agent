@@ -5,7 +5,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 import { create } from "zustand";
-import type { BotStatus, ChatMessage, ChatThread, PendingPrompt } from "~/api/types";
+import type { BotStatus, ChatThread, PendingPrompt } from "~/api/types";
 
 export type View = "chat" | "code" | "bots" | "plugins" | "skills" | "settings";
 
@@ -59,34 +59,15 @@ export const useRuntimeState = create<RuntimeState>((set, get) => ({
   }),
 }));
 
-interface ChatState {
+interface ThreadsState {
+  /** Every session the runtime has; each surface filters its own. */
   threads: ChatThread[];
-  activeId: string | null;
-  messages: ChatMessage[];
-  streaming: string;
-  loading: boolean;
   setThreads(threads: ChatThread[]): void;
-  setActive(id: string | null): void;
-  setMessages(messages: ChatMessage[]): void;
-  addMessage(message: ChatMessage): void;
-  appendStreaming(text: string): void;
-  clearStreaming(): void;
-  setLoading(loading: boolean): void;
 }
 
-export const useChat = create<ChatState>((set) => ({
+export const useChat = create<ThreadsState>((set) => ({
   threads: [],
-  activeId: null,
-  messages: [],
-  streaming: "",
-  loading: false,
   setThreads: (threads) => set({ threads }),
-  setActive: (activeId) => set({ activeId }),
-  setMessages: (messages) => set({ messages }),
-  addMessage: (message) => set((s) => ({ messages: [...s.messages, message] })),
-  appendStreaming: (text) => set((s) => ({ streaming: s.streaming + text })),
-  clearStreaming: () => set({ streaming: "" }),
-  setLoading: (loading) => set({ loading }),
 }));
 
 interface BotsState {

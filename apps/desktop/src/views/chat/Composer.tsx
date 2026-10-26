@@ -4,7 +4,8 @@ import { cx } from "~/lib/cx";
 import * as api from "~/api/mercury";
 import type { ChatSettings, ModelsResponse } from "~/api/types";
 import { useRuntimeState } from "~/app/store";
-import { sendMessage } from "~/app/events";
+import { sendMessage, type CodeTurn } from "~/app/events";
+import { useConversation, type Surface } from "~/app/conversation";
 import { Button } from "~/components/ui/Button";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "~/components/ui/Menu";
 import { Tooltip } from "~/components/ui/Tooltip";
@@ -28,7 +29,18 @@ const MAX_FILES = 4;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_PDF_BYTES = 15 * 1024 * 1024;
 
-export function Composer({ mode }: { mode: "chat" | "code" }) {
+export interface ComposerProps {
+  surface: Surface;
+  placeholder: string;
+  /** Code turns carry their mode and folder; Chat turns carry nothing extra. */
+  code?: CodeTurn;
+  /** Shown left of send (e.g. the Code mode picker); replaces the model/approval pickers' slot order. */
+  extra?: React.ReactNode;
+  /** Block sending with this reason (e.g. no folder chosen). */
+  blockedReason?: string;
+}
+
+export function Composer({ surface, placeholder, code, extra, blockedReason }: ComposerProps) {
   const [text, setText] = useState("");
   const [files, setFiles] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -36,7 +48,7 @@ export function Composer({ mode }: { mode: "chat" | "code" }) {
   const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
-  const agent = useRuntimeState((s) => s.agent);
+  const agent = useConversation((s) => s.agent);
   const connected = useRuntimeState((s) => s.connected);
 
   useEffect(() => {
@@ -88,7 +100,7 @@ export function Composer({ mode }: { mode: "chat" | "code" }) {
     setSending(true);
     setError(null);
     try {
-      await sendMessage(content, files.map((f) => ({ name: f.name, data: f.data, mime: f.mime })));
+      await sendMessage(surface, content, files.map((f) => ({ name: f.name, data: f.data, mime: f.mime })), code);
       setText("");
       for (const f of files) if (f.preview) URL.revokeObjectURL(f.preview);
       setFiles([]);
@@ -101,7 +113,7 @@ export function Composer({ mode }: { mode: "chat" | "code" }) {
   }
 
   const busy = agent === "thinking" || agent === "streaming" || agent === "working";
-  const canSend = connected && (text.trim().length > 0 || files.length > 0);
+  const canSend = connected && !blockedReason && (text.trim().length > 0 || files.length > 0);
 
   return (
     <div className="shrink-0 px-8 pb-6 pt-2">
@@ -142,7 +154,7 @@ export function Composer({ mode }: { mode: "chat" | "code" }) {
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
               if (e.key === "Escape" && text) { e.preventDefault(); setText(""); }
             }}
-            placeholder={!connected ? "Waiting for Mercury…" : mode === "code" ? "Describe the change…" : "Ask anything…"}
+            placeholder={!connected ? "Waiting for Mercury…" : blockedReason ?? placeholder}
             rows={1}
             disabled={!connected}
             className="block w-full resize-none bg-transparent px-5 pt-4 text-md leading-[26px] text-ink caret-accent placeholder:text-ink4"
@@ -155,8 +167,9 @@ export function Composer({ mode }: { mode: "chat" | "code" }) {
               </Button>
             </Tooltip>
             <input ref={picker} type="file" accept="image/*,application/pdf" multiple hidden onChange={(e) => { if (e.target.files) void addFiles(e.target.files); e.target.value = ""; }} />
+            {extra}
             <ModelPicker />
-            <ModePicker />
+            {surface === "chat" && <ModePicker />}
             <div className="flex-1" />
             {busy ? (
               <span className="mr-2 text-xs text-ink4">{agent === "streaming" ? "Answering" : agent === "working" ? "Working" : "Thinking"}…</span>

@@ -348,7 +348,7 @@ export class WebChannel extends BaseChannel {
    * `attachments` are files already on disk (see `web/api/uploads.ts`); them being
    * present is what lets the runtime hand a photo to a vision model instead of a path.
    */
-  emitMessageInThread(content: string, threadId: string, sessionId?: string, requestId?: string, externalConversationId?: string, messageId?: string, attachments?: ChannelAttachment[]): void {
+  emitMessageInThread(content: string, threadId: string, sessionId?: string, requestId?: string, externalConversationId?: string, messageId?: string, attachments?: ChannelAttachment[], scope?: { programming?: string; cwd?: string }): void {
     if (this.restrictUser) {
       throw new Error('Web user is restricted. Disable restrict mode to continue.');
     }
@@ -367,6 +367,10 @@ export class WebChannel extends BaseChannel {
         ...(externalConversationId ? { externalConversationId } : {}),
         ...(messageId ? { canonicalMessageId: messageId } : {}),
         ...(attachments && attachments.length > 0 ? { attachments } : {}),
+        // Session-scoped coding (Mercury Desktop's Code surface): the mode and
+        // folder apply to this turn only; the agent restores the rest after.
+        ...(scope?.programming ? { programming: scope.programming } : {}),
+        ...(scope?.cwd ? { programmingCwd: scope.cwd } : {}),
       },
     };
     this.emit(msg);

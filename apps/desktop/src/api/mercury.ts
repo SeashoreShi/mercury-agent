@@ -49,14 +49,26 @@ export const chat = {
   thread: (id: string) => http.get<ChatThread>(`/api/chat/threads/${encodeURIComponent(id)}`),
   createThread: (title?: string) => http.post<ChatThread>("/api/chat/threads", { title }),
   deleteThread: (id: string) => http.post<{ deleted: boolean }>(`/api/chat/threads/${encodeURIComponent(id)}/delete`, { confirmSessionId: id }),
-  send: (content: string, sessionId?: string, attachments?: Array<{ name: string; data: string }>) =>
-    http.post<{ sent: boolean; sessionId: string }>("/api/chat/send", { content, sessionId, ...(attachments?.length ? { attachments } : {}) }),
+  send: (content: string, sessionId?: string, attachments?: Array<{ name: string; data: string }>, code?: { programming: string; cwd?: string }) =>
+    http.post<{ sent: boolean; sessionId: string }>("/api/chat/send", { content, sessionId, ...(attachments?.length ? { attachments } : {}), ...(code ?? {}) }),
   answer: (promptId: string, action: string, targetId?: string) => http.post<{ resolved: boolean }>(`/api/chat/permission/${encodeURIComponent(promptId)}`, { action, targetId }),
   settings: () => http.get<ChatSettings>("/api/chat/settings"),
   updateSettings: (patch: Partial<ChatSettings>) => http.put<ChatSettings>("/api/chat/settings", patch),
   models: () => http.get<ModelsResponse>("/api/chat/models"),
   switchModel: (provider: string, model?: string) => http.post<{ ok: boolean; message: string }>("/api/chat/models/switch", { provider, model }),
   setReasoning: (provider: string, model: string, reasoning: ReasoningChoice | null) => http.post<{ ok: boolean }>("/api/chat/models/prefs", { provider, model, reasoning }),
+};
+
+export const workspace = {
+  info: () => http.get<{ cwd: string; projectName: string; projectType: string; isGit: boolean; branch: string; remoteUrl: string }>("/api/workspace/info"),
+  setRoot: (path: string) => http.put<{ success: boolean; workspace: string }>("/api/workspace/root", { path }),
+  tree: (path?: string) => http.get<{ root: string; currentPath: string; items: Array<{ name: string; path: string; isDirectory: boolean; type: string; size?: number; ext?: string }> }>(`/api/workspace/tree${path ? `?path=${encodeURIComponent(path)}` : ""}`),
+  file: (path: string) => http.get<{ path: string; name: string; size: number; truncated: boolean; content: string; ext: string }>(`/api/workspace/file?path=${encodeURIComponent(path)}`),
+};
+
+export const git = {
+  status: () => http.get<{ branch: string; upstream: string; ahead: number; behind: number; files: Array<{ path: string; status: string; staged: boolean }>; cwd: string }>("/api/git/status"),
+  diff: (file: string) => http.get<{ diff: string }>(`/api/git/diff?file=${encodeURIComponent(file)}`),
 };
 
 export const code = {

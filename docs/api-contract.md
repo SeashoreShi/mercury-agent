@@ -66,3 +66,15 @@ tokens, so a hostile page cannot ride the session cookie. Set
 ## Feature flags (apiVersion 1)
 
 `auth.devices`, `chat.sse`, `chat.attachments`, `bots`, `plugins`, `mcp`, `boards`, `brain`.
+
+## Session-scoped coding
+
+`POST /api/chat/send` accepts `programming: "auto" | "plan" | "execute"` and
+`cwd` (an existing directory). The runtime runs that turn with that session's
+programming mode, plan and folder, then restores the global mode and folder,
+so a coding session never changes Chat, the terminal or other sessions. A plan
+made in a session stays with it for its next turn.
+
+`POST /api/chat/send` returns sent files as `attachments: [{ name, kind, mime, url }]`,
+threads return them per message, and `GET /api/chat/uploads/:month/:file`
+serves them to an authenticated caller.

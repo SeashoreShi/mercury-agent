@@ -1,21 +1,26 @@
-import { Search, Trash2 } from "lucide-react";
+import { Search, SquarePen, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cx } from "~/lib/cx";
 import * as api from "~/api/mercury";
 import type { ChatThread } from "~/api/types";
-import { useChat } from "~/app/store";
-import { openThread, refreshThreads } from "~/app/events";
+import { refreshThreads } from "~/app/events";
 
 const PAGE = 40;
 
 /**
- * Threads, most recently active first, grouped by day. Renders a page at a
- * time and adds the next page as the list scrolls; a filter box searches
- * all of them by title.
+ * Sessions of one surface, most recently active first, grouped by day, with
+ * New and search on top. Renders a page at a time and adds the next page as
+ * the list scrolls.
  */
-export function ThreadList() {
-  const threads = useChat((s) => s.threads);
-  const activeId = useChat((s) => s.activeId);
+export function ThreadList({ threads, activeId, onOpen, onNew, newLabel, searchLabel, renderMeta }: {
+  threads: ChatThread[];
+  activeId: string | null;
+  onOpen: (id: string) => void;
+  onNew: () => void;
+  newLabel: string;
+  searchLabel: string;
+  renderMeta?: (t: ChatThread) => React.ReactNode;
+}) {
   const [limit, setLimit] = useState(PAGE);
   const [query, setQuery] = useState("");
   const sentinel = useRef<HTMLDivElement>(null);
@@ -42,28 +47,34 @@ export function ThreadList() {
   async function remove(t: ChatThread) {
     try {
       await api.chat.deleteThread(t.id);
-      if (activeId === t.id) void openThread(null);
+      if (activeId === t.id) onNew();
       void refreshThreads();
     } catch { /* keep */ }
   }
 
   return (
     <aside className="flex h-full w-[300px] shrink-0 flex-col border-r border-line bg-soft">
-      <div className="flex h-[52px] shrink-0 items-center px-3" data-tauri-drag-region>
-        <label className="flex h-9 w-full items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-ink4 focus-within:border-line-strong">
+      <div className="flex shrink-0 flex-col gap-2 px-3 pb-2 pt-3" data-tauri-drag-region>
+        <button onClick={onNew} className="flex h-10 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-base font-medium text-ink shadow-sm hover:border-line-strong" data-no-drag>
+          <SquarePen size={17} aria-hidden="true" />
+          <span className="flex-1 text-left">{newLabel}</span>
+          <kbd className="font-mono text-xs text-ink4">⌘N</kbd>
+        </button>
+        <label className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-ink4 hover:bg-ink/[0.04] focus-within:bg-ink/[0.05]">
           <Search size={16} aria-hidden="true" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search threads" className="w-full bg-transparent text-base text-ink placeholder:text-ink4" aria-label="Search threads" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={searchLabel} className="w-full bg-transparent text-base text-ink placeholder:text-ink4" aria-label={searchLabel} />
         </label>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-        {filtered.length === 0 && <p className="px-3 pt-2 text-base text-ink4">{query ? "No matching threads." : "No threads yet."}</p>}
+        {filtered.length === 0 && <p className="px-3 pt-2 text-base text-ink4">{query ? "Nothing matches." : "No sessions yet."}</p>}
         {groups.map(([day, list]) => (
           <div key={day} className="mb-5">
             <div className="px-3 pb-1.5 text-xs font-medium uppercase tracking-wider text-ink4">{day}</div>
             {list.map((t) => (
               <div key={t.id} className={cx("group flex items-center rounded-lg", activeId === t.id ? "bg-ink/[0.07]" : "hover:bg-ink/[0.05]")}>
-                <button onClick={() => void openThread(t.id)} className="min-w-0 flex-1 truncate px-3 py-2.5 text-left text-base" title={t.title || "Untitled"}>
-                  <span className={activeId === t.id ? "text-ink" : "text-ink2 group-hover:text-ink"}>{t.title || "Untitled"}</span>
+                <button onClick={() => onOpen(t.id)} className="min-w-0 flex-1 px-3 py-2.5 text-left text-base" title={t.title || "Untitled"}>
+                  <span className={cx("block truncate", activeId === t.id ? "text-ink" : "text-ink2 group-hover:text-ink")}>{(t.title || "Untitled").replace(/^Code · /, "")}</span>
+                  {renderMeta?.(t)}
                 </button>
                 <button onClick={() => void remove(t)} className="mr-1 hidden rounded p-1 text-ink4 hover:text-red group-hover:block" aria-label="Delete thread">
                   <Trash2 size={15} />
