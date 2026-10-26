@@ -32,6 +32,9 @@ input, textarea, pre, code, [data-selectable], .prose {
 }
 
 *:focus { outline: none; }
+/* Text fields show focus on their own container (see Composer, Input),
+   not with a ring drawn inside a rounded box. */
+textarea:focus-visible, input:focus-visible { outline: none; }
 *:focus-visible {
   outline: 2px solid rgb(var(--accent) / 0.6);
   outline-offset: 2px;

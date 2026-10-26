@@ -49,7 +49,8 @@ export const chat = {
   thread: (id: string) => http.get<ChatThread>(`/api/chat/threads/${encodeURIComponent(id)}`),
   createThread: (title?: string) => http.post<ChatThread>("/api/chat/threads", { title }),
   deleteThread: (id: string) => http.post<{ deleted: boolean }>(`/api/chat/threads/${encodeURIComponent(id)}/delete`, { confirmSessionId: id }),
-  send: (content: string, sessionId?: string) => http.post<{ sent: boolean; sessionId: string }>("/api/chat/send", { content, sessionId }),
+  send: (content: string, sessionId?: string, attachments?: Array<{ name: string; data: string }>) =>
+    http.post<{ sent: boolean; sessionId: string }>("/api/chat/send", { content, sessionId, ...(attachments?.length ? { attachments } : {}) }),
   answer: (promptId: string, action: string, targetId?: string) => http.post<{ resolved: boolean }>(`/api/chat/permission/${encodeURIComponent(promptId)}`, { action, targetId }),
   settings: () => http.get<ChatSettings>("/api/chat/settings"),
   updateSettings: (patch: Partial<ChatSettings>) => http.put<ChatSettings>("/api/chat/settings", patch),

@@ -1,4 +1,4 @@
-import { ArrowUp, ChevronDown, Shield, ShieldCheck } from "lucide-react";
+import { ArrowUp, ChevronDown, Paperclip, Shield, ShieldCheck, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { cx } from "~/lib/cx";
 import * as api from "~/api/mercury";
@@ -10,15 +10,31 @@ import { Menu, MenuItem, MenuLabel, MenuSeparator } from "~/components/ui/Menu";
 import { Tooltip } from "~/components/ui/Tooltip";
 
 /**
- * One box. Enter sends, Shift+Enter breaks a line. Below it: the model and
- * the approval mode (Ask Me / Allow All), both one click away and never a
- * settings page.
+ * One box. Enter sends, Shift+Enter breaks a line, Esc clears. Photos and
+ * PDFs come in by the paperclip, paste or drag-and-drop (up to 4, the
+ * runtime's limit). Below: the model and Ask Me / Allow All, one click each.
+ * Focus shows as a soft ring on the whole box, never a line inside it.
  */
+interface Pending {
+  id: string;
+  name: string;
+  size: number;
+  data: string;
+  preview: string | null;
+}
+
+const MAX_FILES = 4;
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_PDF_BYTES = 15 * 1024 * 1024;
+
 export function Composer({ mode }: { mode: "chat" | "code" }) {
   const [text, setText] = useState("");
+  const [files, setFiles] = useState<Pending[]>([]);
+  const [dragging, setDragging] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
   const agent = useRuntimeState((s) => s.agent);
   const connected = useRuntimeState((s) => s.connected);
 
@@ -26,17 +42,55 @@ export function Composer({ mode }: { mode: "chat" | "code" }) {
     const el = ref.current;
     if (!el) return;
     el.style.height = "0px";
-    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 28), 240)}px`;
   }, [text]);
+
+  // ⌘L / Ctrl+L focuses the box from anywhere in the view.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "l") { e.preventDefault(); ref.current?.focus(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  async function addFiles(list: FileList | File[]) {
+    setError(null);
+    const incoming = Array.from(list);
+    const room = MAX_FILES - files.length;
+    if (incoming.length > room) setError(`Up to ${MAX_FILES} files per message.`);
+    const accepted: Pending[] = [];
+    for (const f of incoming.slice(0, Math.max(0, room))) {
+      const isImage = f.type.startsWith("image/");
+      const isPdf = f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
+      if (!isImage && !isPdf) { setError(`${f.name}: only images and PDFs can be attached.`); continue; }
+      const limit = isImage ? MAX_IMAGE_BYTES : MAX_PDF_BYTES;
+      if (f.size > limit) { setError(`${f.name} is ${Math.round(f.size / 1048576)} MB; the limit is ${limit / 1048576} MB.`); continue; }
+      const data = await readBase64(f);
+      accepted.push({ id: crypto.randomUUID(), name: f.name, size: f.size, data, preview: isImage ? URL.createObjectURL(f) : null });
+    }
+    if (accepted.length) setFiles((cur) => [...cur, ...accepted]);
+    ref.current?.focus();
+  }
+
+  function removeFile(id: string) {
+    setFiles((cur) => {
+      const gone = cur.find((f) => f.id === id);
+      if (gone?.preview) URL.revokeObjectURL(gone.preview);
+      return cur.filter((f) => f.id !== id);
+    });
+  }
 
   async function submit() {
     const content = text.trim();
-    if (!content || sending) return;
+    if ((!content && files.length === 0) || sending) return;
     setSending(true);
     setError(null);
     try {
-      await sendMessage(content);
+      await sendMessage(content, files.map((f) => ({ name: f.name, data: f.data })));
       setText("");
+      for (const f of files) if (f.preview) URL.revokeObjectURL(f.preview);
+      setFiles([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -46,33 +100,71 @@ export function Composer({ mode }: { mode: "chat" | "code" }) {
   }
 
   const busy = agent === "thinking" || agent === "streaming" || agent === "working";
+  const canSend = connected && (text.trim().length > 0 || files.length > 0);
 
   return (
     <div className="shrink-0 px-8 pb-6 pt-2">
       <div className="mx-auto w-full max-w-[780px]">
-        {error && <div className="mb-2 text-xs text-red">{error}</div>}
-        <div className={cx("rounded-xl border border-line bg-surface shadow-sm transition-colors focus-within:border-line-strong")}>
+        {error && <div className="mb-2 px-1 text-sm text-red">{error}</div>}
+        <div
+          onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true); } }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files.length) void addFiles(e.dataTransfer.files); }}
+          className={cx(
+            "rounded-2xl border bg-surface transition-[border-color,box-shadow] duration-150",
+            "shadow-[0_1px_2px_rgb(0_0_0/0.04),0_4px_16px_-8px_rgb(0_0_0/0.12)]",
+            "focus-within:border-line-strong focus-within:shadow-[0_0_0_4px_rgb(var(--ink)/0.05),0_4px_16px_-8px_rgb(0_0_0/0.16)]",
+            dragging ? "border-accent border-dashed" : "border-line",
+            !connected && "opacity-70",
+          )}
+        >
+          {files.length > 0 && (
+            <div className="flex flex-wrap gap-2 px-3 pt-3">
+              {files.map((f) => (
+                <span key={f.id} className="group flex h-12 items-center gap-2 rounded-lg border border-line bg-raised pl-1 pr-2 text-xs text-ink2">
+                  {f.preview ? <img src={f.preview} alt="" className="h-10 w-10 rounded-md object-cover" /> : <span className="flex h-10 w-10 items-center justify-center rounded-md bg-red/10 font-mono text-2xs text-red">PDF</span>}
+                  <span className="max-w-[140px]">
+                    <span className="block truncate text-ink">{f.name}</span>
+                    <span className="block text-2xs text-ink4">{formatSize(f.size)}</span>
+                  </span>
+                  <button onClick={() => removeFile(f.id)} className="ml-1 rounded p-0.5 text-ink4 hover:text-ink" aria-label={`Remove ${f.name}`}><X size={14} /></button>
+                </span>
+              ))}
+            </div>
+          )}
           <textarea
             ref={ref}
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); void addFiles(e.clipboardData.files); } }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
+              if (e.key === "Escape" && text) { e.preventDefault(); setText(""); }
             }}
-            placeholder={mode === "code" ? "Describe the change…" : "Message Mercury…"}
+            placeholder={!connected ? "Waiting for Mercury…" : mode === "code" ? "Describe the change…" : "Ask anything…"}
             rows={1}
             disabled={!connected}
-            className="block w-full resize-none bg-transparent px-4 pt-4 text-md leading-[26px] text-ink placeholder:text-ink4 disabled:opacity-60"
+            className="block w-full resize-none bg-transparent px-4 pt-[14px] text-md leading-[26px] text-ink caret-accent placeholder:text-ink4"
             aria-label="Message"
           />
-          <div className="flex items-center gap-1 px-2 pb-2 pt-1">
+          <div className="flex items-center gap-1 px-2 pb-2 pt-1.5">
+            <Tooltip label="Attach images or PDFs" side="top">
+              <Button variant="ghost" size="md" icon onClick={() => picker.current?.click()} disabled={!connected || files.length >= MAX_FILES} aria-label="Attach">
+                <Paperclip size={17} />
+              </Button>
+            </Tooltip>
+            <input ref={picker} type="file" accept="image/*,application/pdf" multiple hidden onChange={(e) => { if (e.target.files) void addFiles(e.target.files); e.target.value = ""; }} />
             <ModelPicker />
             <ModePicker />
             <div className="flex-1" />
-            {busy && <span className="mr-1 text-2xs text-ink4">{agent === "streaming" ? "answering" : agent === "working" ? "working" : "thinking"}…</span>}
+            {busy ? (
+              <span className="mr-2 text-xs text-ink4">{agent === "streaming" ? "Answering" : agent === "working" ? "Working" : "Thinking"}…</span>
+            ) : text.length > 0 ? (
+              <span className="mr-2 hidden text-2xs text-ink4 sm:inline">⇧↵ new line</span>
+            ) : null}
             <Tooltip label="Send" shortcut="↵" side="top">
-              <Button variant="primary" size="md" icon onClick={() => void submit()} disabled={!text.trim() || !connected} loading={sending} aria-label="Send">
-                <ArrowUp size={16} strokeWidth={2.2} />
+              <Button variant="primary" size="md" icon onClick={() => void submit()} disabled={!canSend} loading={sending} aria-label="Send" className="rounded-full">
+                <ArrowUp size={17} strokeWidth={2.4} />
               </Button>
             </Tooltip>
           </div>
@@ -80,6 +172,21 @@ export function Composer({ mode }: { mode: "chat" | "code" }) {
       </div>
     </div>
   );
+}
+
+function readBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ""));
+    reader.onerror = () => reject(reader.error ?? new Error("Could not read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
 function ModelPicker() {

@@ -157,7 +157,7 @@ export async function openThread(id: string | null): Promise<void> {
   }
 }
 
-export async function sendMessage(content: string): Promise<void> {
+export async function sendMessage(content: string, attachments: Array<{ name: string; data: string }> = []): Promise<void> {
   const chat = useChat.getState();
   const rt = useRuntimeState.getState();
   let id = chat.activeId;
@@ -167,10 +167,11 @@ export async function sendMessage(content: string): Promise<void> {
     chat.setActive(id);
     chat.setMessages([]);
   }
-  const optimistic: ChatMessage = { id: crypto.randomUUID(), role: "user", content, timestamp: new Date().toISOString() };
+  const shown = content || `(Attached: ${attachments.map((a) => a.name).join(", ")})`;
+  const optimistic: ChatMessage = { id: crypto.randomUUID(), role: "user", content: shown, timestamp: new Date().toISOString() };
   useChat.getState().addMessage(optimistic);
   rt.setAgent("thinking");
-  await api.chat.send(content, id);
+  await api.chat.send(content, id, attachments);
   void refreshThreads();
 }
 
