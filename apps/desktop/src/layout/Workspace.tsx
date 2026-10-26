@@ -40,8 +40,11 @@ export function Workspace({ connection, health, onSwitchConnection }: { connecti
 }
 
 function Pane({ active, children }: { active: boolean; children: React.ReactNode }) {
+  // A class, not the `hidden` attribute: Tailwind's preflight gives the
+  // attribute zero specificity, so a `flex` class would win and show every
+  // pane at once.
   return (
-    <div className="absolute inset-0 flex flex-col" hidden={!active} aria-hidden={!active}>
+    <div className={active ? "absolute inset-0 flex flex-col" : "hidden"} aria-hidden={!active}>
       {children}
     </div>
   );
