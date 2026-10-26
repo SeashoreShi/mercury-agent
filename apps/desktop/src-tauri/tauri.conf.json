@@ -21,7 +21,9 @@
         "minHeight": 600,
         "center": true,
         "resizable": true,
-        "dragDropEnabled": true
+        "dragDropEnabled": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {
@@ -45,7 +47,7 @@
     "category": "DeveloperTool",
     "shortDescription": "Mercury Desktop",
     "longDescription": "The native desktop app for Mercury, the soul-driven AI agent. Attaches to a Mercury on this computer or connects to one anywhere.",
-    "copyright": "© Cosmic Stack",
+    "copyright": "\u00a9 Cosmic Stack",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -57,29 +59,49 @@
     "macOS": {
       "minimumSystemVersion": "11.0",
       "dmg": {
-        "windowSize": { "width": 660, "height": 400 }
+        "windowSize": {
+          "width": 660,
+          "height": 400
+        }
       }
     },
     "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["English"]
+        "languages": [
+          "English"
+        ]
       }
     },
     "linux": {
-      "appimage": { "bundleMediaFramework": false },
-      "deb": { "section": "utils" }
+      "appimage": {
+        "bundleMediaFramework": false
+      },
+      "deb": {
+        "section": "utils"
+      }
     }
   },
   "plugins": {
     "updater": {
-      "endpoints": ["https://mercuryagent.sh/desktop/latest.json"],
+      "endpoints": [
+        "https://mercuryagent.sh/desktop/latest.json"
+      ],
       "pubkey": "",
-      "windows": { "installMode": "passive" }
+      "windows": {
+        "installMode": "passive"
+      }
     },
     "deep-link": {
-      "desktop": { "schemes": ["mercury"] }
+      "desktop": {
+        "schemes": [
+          "mercury"
+        ]
+      }
     }
   }
 }

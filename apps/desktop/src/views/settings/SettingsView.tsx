@@ -1,4 +1,4 @@
-import { Info, Palette, Power, Server, Smartphone } from "lucide-react";
+import { Info, PanelBottom, Palette, Power, Server, Smartphone } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cx } from "~/lib/cx";
 import * as api from "~/api/mercury";
@@ -12,15 +12,17 @@ import { Badge, Mono, Segmented } from "~/components/ui/bits";
 import { Dialog } from "~/components/ui/Dialog";
 import { AddRemote } from "~/shell/AddRemote";
 import { StateOrb } from "~/components/indicators/StateOrb";
+import { isVisible, orderedIds, useContributions, type ContributionArea } from "~/extensions/registry";
 
 /**
  * Settings: a section list on the left, one section on the right. Most-used
  * first (Appearance), plain labels, every control explains itself in one line.
  */
-type Section = "appearance" | "connections" | "devices" | "startup" | "about";
+type Section = "appearance" | "statusbar" | "connections" | "devices" | "startup" | "about";
 
 const SECTIONS: Array<{ id: Section; label: string; icon: typeof Palette }> = [
   { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "statusbar", label: "Status bar", icon: PanelBottom },
   { id: "connections", label: "Connections", icon: Server },
   { id: "devices", label: "Paired devices", icon: Smartphone },
   { id: "startup", label: "Start-up", icon: Power },
@@ -49,6 +51,7 @@ export function SettingsView({ connection, health, onSwitchConnection }: { conne
         <div className="mx-auto flex max-w-[680px] flex-col gap-6 px-8 py-8">
           <h1 className="text-xl font-semibold tracking-tight text-ink">{SECTIONS.find((s) => s.id === section)?.label}</h1>
           {section === "appearance" && <Appearance />}
+          {section === "statusbar" && <StatusBarSettings />}
           {section === "connections" && <Connections current={connection} health={health} onSwitchConnection={onSwitchConnection} />}
           {section === "devices" && <Devices current={connection} />}
           {section === "startup" && <Startup />}
@@ -200,6 +203,34 @@ function About({ health }: { health: HealthInfo }) {
         <div className="mt-1 flex items-center justify-between"><span>Runtime</span><Mono>{health.version} · API v{health.apiVersion ?? "?"}</Mono></div>
         <button className="mt-3 text-xs text-accent hover:underline" onClick={() => void desktop.openExternal("https://mercuryagent.sh")}>mercuryagent.sh</button>
       </div>
+    </section>
+  );
+}
+
+function StatusBarSettings() {
+  const items = useContributions((s) => s.items);
+  const layout = useContributions((s) => s.layout);
+  const setVisible = useContributions((s) => s.setVisible);
+  const reset = useContributions((s) => s.reset);
+  const areas: Array<[ContributionArea, string]> = [["status.left", "Left side"], ["status.right", "Right side"]];
+  return (
+    <section className="flex flex-col gap-4">
+      <p className="text-sm text-ink3">Choose what the bar at the bottom of the window shows. Right-click the bar for the same list and to reorder items. Plugins can add items here too.</p>
+      {areas.map(([area, label]) => (
+        <div key={area} className="overflow-hidden rounded-lg border border-line bg-surface">
+          <div className="border-b border-line px-4 py-2 text-xs font-medium uppercase tracking-wider text-ink4">{label}</div>
+          {orderedIds(items, layout, area).map((id) => {
+            const item = items[id];
+            return (
+              <div key={id} className="flex items-center justify-between border-b border-line px-4 py-2.5 last:border-b-0">
+                <span className="text-sm text-ink">{item.title}{item.views ? <span className="ml-2 text-xs text-ink4">in {item.views.join(", ")}</span> : null}</span>
+                <Switch id={`sb-${id}`} checked={isVisible(item, layout)} onCheckedChange={(v) => setVisible(id, v)} />
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      <div><Button variant="outline" onClick={reset}>Reset to default</Button></div>
     </section>
   );
 }

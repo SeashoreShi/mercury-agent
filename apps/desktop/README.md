@@ -22,6 +22,26 @@ Design: one quiet palette (`src/styles/tokens.css`), light / dark / auto, a
 single accent the user can tint; amber means "needs you", red means halt,
 cyan means thinking — fixed. Geist and Geist Mono are bundled.
 
+## Extending the chrome
+
+The status bar is built from contributions (`src/extensions/registry.ts`).
+Built-in items register exactly as a UI plugin will:
+
+```ts
+mercuryUi.registerStatusItem({
+  id: "optimus.screen",          // "<owner>.<name>", stable
+  title: "Screen control",       // shown in Customize and Settings → Status bar
+  area: "status.right",          // or "status.left"
+  priority: 30,                  // higher sits further left in its area
+  views: ["chat", "code"],       // omit for every view
+  render: ScreenStatus,          // a React component
+});
+```
+
+The user's choices (hidden, shown, order) are stored by id, so adding or
+removing contributions never reshuffles their layout. Keep ids and fields
+stable once published; add new optional fields, never rename.
+
 ## How a connection works
 
 | Kind   | Address                      | Credential                                              |
