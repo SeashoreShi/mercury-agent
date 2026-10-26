@@ -18,6 +18,7 @@ import { Tooltip } from "~/components/ui/Tooltip";
 interface Pending {
   id: string;
   name: string;
+  mime: string;
   size: number;
   data: string;
   preview: string | null;
@@ -67,7 +68,7 @@ export function Composer({ mode }: { mode: "chat" | "code" }) {
       const limit = isImage ? MAX_IMAGE_BYTES : MAX_PDF_BYTES;
       if (f.size > limit) { setError(`${f.name} is ${Math.round(f.size / 1048576)} MB; the limit is ${limit / 1048576} MB.`); continue; }
       const data = await readBase64(f);
-      accepted.push({ id: crypto.randomUUID(), name: f.name, size: f.size, data, preview: isImage ? URL.createObjectURL(f) : null });
+      accepted.push({ id: crypto.randomUUID(), name: f.name, mime: isImage ? f.type || "image/png" : "application/pdf", size: f.size, data, preview: isImage ? URL.createObjectURL(f) : null });
     }
     if (accepted.length) setFiles((cur) => [...cur, ...accepted]);
     ref.current?.focus();
@@ -87,7 +88,7 @@ export function Composer({ mode }: { mode: "chat" | "code" }) {
     setSending(true);
     setError(null);
     try {
-      await sendMessage(content, files.map((f) => ({ name: f.name, data: f.data })));
+      await sendMessage(content, files.map((f) => ({ name: f.name, data: f.data, mime: f.mime })));
       setText("");
       for (const f of files) if (f.preview) URL.revokeObjectURL(f.preview);
       setFiles([]);

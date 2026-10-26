@@ -1,10 +1,11 @@
-import { ChevronRight, Wrench } from "lucide-react";
+import { Check, ChevronRight, Copy, Wrench } from "lucide-react";
 import { memo, useState } from "react";
 import type { ChatMessage } from "~/api/types";
 import { Mark } from "~/components/Logo";
 import { Markdown } from "~/components/Markdown";
 import { StreamCaret } from "~/components/indicators/Thinking";
 import { ActionResult } from "~/components/indicators/Activity";
+import { Attachments } from "~/components/Attachments";
 import { cx } from "~/lib/cx";
 
 /**
@@ -17,9 +18,14 @@ import { cx } from "~/lib/cx";
  */
 export const Message = memo(function Message({ message }: { message: ChatMessage }) {
   if (message.role === "user") {
+    const files = message.attachments ?? [];
+    // "(Attached: a.png)" is the runtime's text for a files-only turn; the files say it better.
+    const text = files.length > 0 && /^\(Attached: .*\)$/.test(message.content.trim()) ? "" : message.content;
     return (
-      <div className="pl-10 pt-2">
-        <p className="whitespace-pre-wrap text-lg font-medium leading-[1.55] tracking-[-0.01em] text-ink" data-selectable>{message.content}</p>
+      <div className="group flex flex-col gap-3 pl-10 pt-2">
+        {files.length > 0 && <Attachments items={files} />}
+        {text && <p className="whitespace-pre-wrap text-lg font-medium leading-[1.55] tracking-[-0.01em] text-ink" data-selectable>{text}</p>}
+        <MessageMeta timestamp={message.timestamp} />
       </div>
     );
   }
@@ -34,7 +40,7 @@ export const Message = memo(function Message({ message }: { message: ChatMessage
     );
   }
   return (
-    <div className="flex gap-4">
+    <div className="group flex gap-4">
       <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center" aria-hidden="true"><Mark size={22} /></span>
       <div className="min-w-0 flex-1">
         {message.steps && message.steps.length > 0 && (
@@ -43,10 +49,40 @@ export const Message = memo(function Message({ message }: { message: ChatMessage
           </div>
         )}
         <Markdown text={message.content} />
+        <MessageMeta timestamp={message.timestamp} copy={message.content} />
       </div>
     </div>
   );
 });
+
+/** Time and copy, shown on hover so the conversation stays quiet. */
+function MessageMeta({ timestamp, copy }: { timestamp: string; copy?: string }) {
+  const [copied, setCopied] = useState(false);
+  const time = formatTime(timestamp);
+  return (
+    <div className="-mb-2 mt-2 flex h-6 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      {copy && (
+        <button
+          onClick={() => { void navigator.clipboard.writeText(copy).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200); }); }}
+          className="flex h-6 items-center gap-1 rounded-md px-1.5 text-xs text-ink4 hover:bg-ink/[0.06] hover:text-ink"
+          aria-label="Copy answer"
+        >
+          {copied ? <Check size={13} className="text-accent" /> : <Copy size={13} />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      )}
+      {time && <span className="px-1.5 text-xs text-ink4">{time}</span>}
+    </div>
+  );
+}
+
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const today = new Date();
+  const sameDay = d.toDateString() === today.toDateString();
+  return sameDay ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : d.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
 
 interface ToolLine {
   tool: string;

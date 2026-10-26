@@ -98,6 +98,7 @@ import { buildFileChangePreview } from '../utils/file-preview.js';
 import { whatsNewText } from '../utils/whats-new.js';
 import { handleBotsCommand as handleBotsCommandImpl } from './commands/bots-command.js';
 import { modelSeesImages, withAttachments } from './attachments.js';
+import { attachmentRefs } from '../web/api/uploads.js';
 import { AlertGate } from './alert-gate.js';
 import { setPluginImagesAllowed } from '../plugins/tool-bridge.js';
 import { handleCallCommand } from '../plugins/call-schedule.js';
@@ -2725,7 +2726,14 @@ export class Agent {
         content: msg.content,
         timestamp: msg.timestamp,
         externalMessageId: msg.id,
-        metadata: { channelType: msg.channelType, channelId: msg.channelId, workCwd: this.capabilities.getCwd(), ...(requestId ? { requestId } : {}) },
+        metadata: {
+          channelType: msg.channelType,
+          channelId: msg.channelId,
+          workCwd: this.capabilities.getCwd(),
+          ...(requestId ? { requestId } : {}),
+          // Files the owner sent with this turn, as refs a client can fetch back.
+          ...(() => { const refs = attachmentRefs(msg.metadata?.attachments); return refs.length ? { attachments: refs } : {}; })(),
+        },
       });
       // One read of the session per turn (it used to be re-read three times).
       const activeSession = this.sessions.get(canonicalSession.id);

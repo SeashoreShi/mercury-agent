@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { storeInlineAttachments } from './uploads.js';
+import { storeInlineAttachments, attachmentRefs, resolveUploadRef, uploadMime } from './uploads.js';
 import type { WebChannel } from '../../channels/web.js';
 import type { ProgrammingMode, ProgrammingModeState } from '../../core/programming-mode.js';
 import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, rmSync } from 'node:fs';
@@ -43,6 +43,9 @@ function toThread(session: ReturnType<SessionRepository['get']>, includeMessages
       timestamp: new Date(message.timestamp).toISOString(),
       kind: message.kind,
       sequence: message.sequence,
+      ...(Array.isArray(message.metadata?.attachments) && message.metadata.attachments.length > 0
+        ? { attachments: (message.metadata.attachments as Array<{ name: string; kind: string; mime?: string; ref: string }>).map((a) => ({ name: a.name, kind: a.kind, mime: a.mime, url: `/api/chat/uploads/${a.ref}` })) }
+        : {}),
     })) : [],
   };
 }
@@ -194,13 +197,32 @@ chat.post('/api/chat/send', async (c) => {
     return c.json({
       sent: true,
       sessionId: session.id,
-      ...(upload.attachments.length > 0 ? { attachments: upload.attachments.map(a => ({ name: a.name, kind: a.kind })) } : {}),
+      ...(upload.attachments.length > 0 ? { attachments: attachmentRefs(upload.attachments).map((a) => ({ name: a.name, kind: a.kind, mime: a.mime, url: `/api/chat/uploads/${a.ref}` })) } : {}),
     });
   } catch (err: any) {
     // The message never reached the runtime: don't leave its files behind.
     for (const a of upload.attachments) rmSync(a.path, { force: true });
     return c.json({ error: err.message }, 500);
   }
+});
+
+// ─── Uploads (files the owner sent, served back to the owner) ──
+
+chat.get('/api/chat/uploads/:month/:file', (c) => {
+  const path = resolveUploadRef(c.req.param('month'), c.req.param('file'));
+  if (!path) return c.json({ error: 'Not found' }, 404);
+  const bytes = readFileSync(path);
+  const mime = uploadMime(bytes);
+  if (!mime) return c.json({ error: 'Not found' }, 404);
+  return new Response(bytes, {
+    headers: {
+      'Content-Type': mime,
+      'Content-Length': String(bytes.length),
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'private, max-age=31536000, immutable',
+      'Content-Disposition': `inline; filename="${c.req.param('file').slice(37).replace(/["\\\r\n]/g, '_')}"`,
+    },
+  });
 });
 
 // ─── Settings ────────────────────────────────────────────────

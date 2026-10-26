@@ -157,7 +157,7 @@ export async function openThread(id: string | null): Promise<void> {
   }
 }
 
-export async function sendMessage(content: string, attachments: Array<{ name: string; data: string }> = []): Promise<void> {
+export async function sendMessage(content: string, attachments: Array<{ name: string; data: string; mime?: string }> = []): Promise<void> {
   const chat = useChat.getState();
   const rt = useRuntimeState.getState();
   let id = chat.activeId;
@@ -168,10 +168,18 @@ export async function sendMessage(content: string, attachments: Array<{ name: st
     chat.setMessages([]);
   }
   const shown = content || `(Attached: ${attachments.map((a) => a.name).join(", ")})`;
-  const optimistic: ChatMessage = { id: crypto.randomUUID(), role: "user", content: shown, timestamp: new Date().toISOString() };
+  const optimistic: ChatMessage = {
+    id: crypto.randomUUID(),
+    role: "user",
+    content: shown,
+    timestamp: new Date().toISOString(),
+    ...(attachments.length
+      ? { attachments: attachments.map((a) => ({ name: a.name, kind: a.mime?.startsWith("image/") ? "image" : "document", mime: a.mime, src: a.mime?.startsWith("image/") ? `data:${a.mime};base64,${a.data}` : undefined })) }
+      : {}),
+  };
   useChat.getState().addMessage(optimistic);
   rt.setAgent("thinking");
-  await api.chat.send(content, id, attachments);
+  await api.chat.send(content, id, attachments.map(({ name, data }) => ({ name, data })));
   void refreshThreads();
 }
 

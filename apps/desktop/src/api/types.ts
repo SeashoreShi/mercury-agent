@@ -49,6 +49,16 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
   steps?: ToolStep[];
+  /** Files sent with this message. `url` is an API path (auth required); `src` is a local preview. */
+  attachments?: MessageAttachment[];
+}
+
+export interface MessageAttachment {
+  name: string;
+  kind: "image" | "document" | string;
+  mime?: string;
+  url?: string;
+  src?: string;
 }
 
 export type ReasoningLevel = "off" | "low" | "medium" | "high";
