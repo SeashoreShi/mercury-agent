@@ -112,7 +112,7 @@ export function Composer({ mode }: { mode: "chat" | "code" }) {
           onDragLeave={() => setDragging(false)}
           onDrop={(e) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files.length) void addFiles(e.dataTransfer.files); }}
           className={cx(
-            "rounded-3xl border bg-surface transition-[border-color,box-shadow] duration-150",
+            "rounded-[28px] border bg-surface transition-[border-color,box-shadow] duration-150",
             "shadow-[0_1px_2px_rgb(0_0_0/0.04),0_4px_16px_-8px_rgb(0_0_0/0.12)]",
             "focus-within:border-line-strong focus-within:shadow-[0_0_0_4px_rgb(var(--ink)/0.05),0_4px_16px_-8px_rgb(0_0_0/0.16)]",
             dragging ? "border-accent border-dashed" : "border-line",
@@ -164,7 +164,7 @@ export function Composer({ mode }: { mode: "chat" | "code" }) {
               <span className="mr-2 hidden text-2xs text-ink4 sm:inline">⇧↵ new line</span>
             ) : null}
             <Tooltip label="Send" shortcut="↵" side="top">
-              <Button variant="primary" size="md" icon onClick={() => void submit()} disabled={!canSend} loading={sending} aria-label="Send" className="rounded-full">
+              <Button variant="primary" size="md" icon onClick={() => void submit()} disabled={!canSend} loading={sending} aria-label="Send" className="!rounded-full">
                 <ArrowUp size={17} strokeWidth={2.4} />
               </Button>
             </Tooltip>
