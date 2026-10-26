@@ -36,6 +36,7 @@ export const API_FEATURES: readonly string[] = Object.freeze([
   'chat.uploads',      // attachments on messages + GET /api/chat/uploads/:month/:file
   'voice',             // /api/voice, /api/voice/events, /api/voice/control (Optimus)
   'usage.history',     // GET /api/usage/history?days= — tokens per local day
+  'brain.people',      // PATCH/merge persons, person checks, GET /api/brain/graph/v2
 ]);
 
 export interface ApiContractInfo {

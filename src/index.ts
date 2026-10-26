@@ -58,6 +58,8 @@ import { BotManager } from './bots/bot-manager.js';
 import { getPluginManager, peekPluginManager, setProviderLookup } from './plugins/manager.js';
 import { setCallLearning, setChannelHost, setDesktopActivityHook, setVoiceBriefing, setWorkStopper } from './plugins/channel-bridge.js';
 import { registerPluginsCli } from './cli/plugins-cli.js';
+import { PersonVerifier, personCheckPrompt, parsePersonCheck } from './memory/person-verifier.js';
+import { setPersonVerifier } from './web/api/brain.js';
 import { registerDevicesCli } from './cli/devices-cli.js';
 import { SECOND_BRAIN_UNAVAILABLE_MESSAGE } from './memory/second-brain-db.js';
 import { isSqliteAvailable } from './utils/sqlite-driver.js';
@@ -2575,6 +2577,22 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
     }
   } else if (config.memory.secondBrain?.enabled !== false && !isSqliteAvailable()) {
     logger.warn(`Second brain disabled: ${SECOND_BRAIN_UNAVAILABLE_MESSAGE}`);
+  }
+
+  // "Is it a person?" for names new memories mention: batched, slow, capped.
+  // Only the process that owns the runtime runs it (never a second terminal).
+  if (userMemory && !daemonOwnsRuntime) {
+    const memForChecks = userMemory;
+    const verifier = new PersonVerifier(memForChecks, async (items) => {
+      const provider = providers.getDefault();
+      const { generateText } = await import('ai');
+      const result = await generateText({ model: provider.getModelInstance(), prompt: personCheckPrompt(items), maxOutputTokens: 400 });
+      const usage = (result as { usage?: { inputTokens?: number; outputTokens?: number } }).usage;
+      tokenBudget.recordUsage({ provider: provider.name, model: provider.getModel(), inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0, totalTokens: (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0), channelType: 'internal' });
+      return parsePersonCheck(result.text, items);
+    });
+    verifier.start();
+    setPersonVerifier(verifier);
   }
 
   const channels = new ChannelRegistry(config, { cliOnly: daemonOwnsRuntime });

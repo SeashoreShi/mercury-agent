@@ -1,6 +1,6 @@
 import type { MercuryConfig } from '../utils/config.js';
 import { getMemoryDir } from '../utils/config.js';
-import { SecondBrainDB, type MemoryRow, type PersonListRow } from './second-brain-db.js';
+import { SecondBrainDB, type MemoryRow, type PersonListRow, type PersonGraph, type PersonKind } from './second-brain-db.js';
 import { BeliefStore, type Belief, type BeliefKind } from './beliefs.js';
 import { looksLikeSecret } from '../learning/text.js';
 import { join } from 'node:path';
@@ -77,13 +77,21 @@ export interface UserPersonRecord {
   description: string | null;
   confidence: number;
   memoryCount: number;
+  /** 'person' | 'pet' | 'unverified'. */
+  kind: string;
+  /** 'owner' | 'model' | 'model-rejected' | null. */
+  verifiedBy: string | null;
+  /** Contact card: phone, email, birthday, location, company, notes, links. */
+  meta: Record<string, unknown>;
+  ownerEdited: boolean;
   firstSeenAt: number;
   lastSeenAt: number;
   createdAt: number;
   updatedAt: number;
 }
 
-const PERSON_INDEX_VERSION = '7';
+// 8: stricter name rules, owner overrides, model checks for new names, beliefs indexed.
+const PERSON_INDEX_VERSION = '8';
 
 export class UserMemoryStore {
   private db: SecondBrainDB;
@@ -200,7 +208,7 @@ export class UserMemoryStore {
   }
 
   listPersons(query?: string, limit: number = 100): UserPersonRecord[] {
-    this.ensurePersonsBackfilled();
+    this.indexNewBeliefs();
     const rows = this.db.listPersons(this.userKey, query, limit);
     return rows.map(row => this.toPersonRecord(row));
   }
@@ -212,17 +220,73 @@ export class UserMemoryStore {
     return this.toPersonRecord(row);
   }
 
-  getPersonMemories(personId: string, limit: number = 50): UserMemoryRecord[] {
-    this.ensurePersonsBackfilled();
-    const rows = this.db.getMemoriesForPerson(this.userKey, personId, limit);
-    return rows.map(row => this.toRecord(row));
+  // ── Owner curation of people (stable ids; rebuilds respect every decision) ──
+
+  updatePerson(personId: string, fields: { displayName?: string; relationship?: string | null; description?: string | null; kind?: PersonKind; meta?: Record<string, unknown> }): UserPersonRecord | null {
+    if (!this.db.updatePerson(this.userKey, personId, fields)) return null;
+    return this.getPerson(personId);
   }
+
+  markNotPerson(personId: string): boolean {
+    return this.db.markNotPerson(this.userKey, personId);
+  }
+
+  mergePersons(fromId: string, intoId: string): boolean {
+    return this.db.mergePersons(this.userKey, fromId, intoId);
+  }
+
+  personGraph(maxMemories: number): PersonGraph {
+    this.indexNewBeliefs();
+    return this.db.personGraph(this.userKey, maxMemories);
+  }
+
+  pendingPersonChecks(limit: number) {
+    this.indexNewBeliefs();
+    return this.db.pendingPersonChecks(this.userKey, limit);
+  }
+
+  queueExistingPersonChecks(): number {
+    this.indexNewBeliefs();
+    return this.db.queueExistingPersonChecks(this.userKey);
+  }
+
+  countPersonChecks(): number {
+    this.indexNewBeliefs();
+    return this.db.countPersonChecks(this.userKey);
+  }
+
+  applyPersonCheck(personId: string, verdict: 'person' | 'pet' | 'not_person' | 'unsure'): void {
+    this.db.applyPersonCheck(this.userKey, personId, verdict);
+  }
+
+  getPersonMemories(personId: string, limit: number = 50): UserMemoryRecord[] {
+    this.indexNewBeliefs();
+    const live = this.db.getBeliefIdsForPerson(personId, limit)
+      .map((id) => this.beliefs.get(id))
+      .filter((b): b is NonNullable<typeof b> => Boolean(b))
+      .map((b) => this.toBeliefRecord(b));
+    const legacy = this.db.getMemoriesForPerson(this.userKey, personId, limit).map(row => this.toRecord(row));
+    return [...live, ...legacy].slice(0, limit);
+  }
+
+  /** True while persons are rebuilt from old memories: those never queue model checks. */
+  private rebuilding = false;
 
   rebuildPersonsFromMemory(): number {
     this.db.clearUserPersonGraph(this.userKey);
     const rows = this.db.getRelationshipMemoryRows(this.userKey);
-    for (const row of rows) {
-      this.indexPersonsForMemoryRow(row);
+    this.db.clearAllBeliefPersons(this.userKey);
+    this.rebuilding = true;
+    try {
+      for (const row of rows) {
+        this.indexPersonsForMemoryRow(row);
+      }
+      // The live brain: every current belief, as of now.
+      const cursor = Date.now();
+      for (const b of this.db.beliefsSince(this.userKey, 0, 100_000)) this.indexPersonsForBelief(b);
+      this.db.setMeta(`${this.userKey}:persons_belief_cursor`, String(cursor));
+    } finally {
+      this.rebuilding = false;
     }
     this.db.deleteOrphanPersons(this.userKey);
     this.db.setMeta(`${this.userKey}:persons_backfilled`, '1');
@@ -440,11 +504,58 @@ export class UserMemoryStore {
       description: row.description,
       confidence: row.confidence,
       memoryCount: row.memory_count,
+      kind: row.kind ?? 'unverified',
+      verifiedBy: row.verified_by ?? null,
+      meta: parseMeta(row.meta),
+      ownerEdited: row.owner_edited === 1,
       firstSeenAt: row.first_seen_at,
       lastSeenAt: row.last_seen_at,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
+  }
+
+  /**
+   * People in beliefs created since the last pass. These are NEW mentions, so
+   * new people they create are queued for a check. Cheap when nothing is new.
+   */
+  indexNewBeliefs(): number {
+    this.ensurePersonsBackfilled();
+    const since = Number(this.db.getMeta(`${this.userKey}:persons_belief_cursor`) ?? '0') || 0;
+    const fresh = this.db.beliefsSince(this.userKey, since, 200);
+    for (const b of fresh) this.indexPersonsForBelief(b);
+    if (fresh.length) this.db.setMeta(`${this.userKey}:persons_belief_cursor`, String(fresh[fresh.length - 1].created_at));
+    return fresh.length;
+  }
+
+  private indexPersonsForBelief(b: { id: string; statement: string; detail: string | null; kind: string; confidence: number }): void {
+    const text = `${b.statement} ${b.detail ?? ''}`.trim();
+    if (!text) return;
+    this.db.clearBeliefPersons(b.id);
+    const queueCheck = this.rebuilding ? null : { context: text };
+    const seen = new Set<string>();
+    const link = (name: string, relation: string | null, role: string) => {
+      const person = this.db.upsertPerson({ userKey: this.userKey, name, relationshipToUser: relation, confidence: b.confidence, queueCheck });
+      if (!person || seen.has(person.id)) return;
+      seen.add(person.id);
+      this.db.addPersonAlias(person.id, name, 'memory');
+      this.db.linkBeliefPerson(b.id, person.id, role, b.confidence);
+    };
+    for (const m of extractUserRelationshipMentions(text)) link(m.name, m.relation, 'relationship');
+    // New people come only from beliefs about people; other beliefs link to people already known.
+    if (b.kind === 'relationship' || b.kind === 'episode') {
+      // A belief about a relationship is about people: a name may open the sentence there
+      // ("Shehzen visited"); new names from it are checked by the model anyway.
+      for (const name of extractHumanNames(text, b.kind === 'relationship')) link(name, b.kind === 'relationship' ? 'known' : null, 'mention');
+    }
+    // Known people mentioned by name or alias.
+    for (const person of this.db.listPersons(this.userKey, '', 300)) {
+      if (seen.has(person.id)) continue;
+      if (mentionsPerson(text, person.display_name) || mentionsPerson(text, person.canonical_name)) {
+        seen.add(person.id);
+        this.db.linkBeliefPerson(b.id, person.id, 'interaction', b.confidence);
+      }
+    }
   }
 
   private indexPersonsForMemory(memory: UserMemoryRecord): void {
@@ -471,7 +582,9 @@ export class UserMemoryStore {
             name: mention.name,
             relationshipToUser: mention.relation,
             confidence: memory.confidence,
+            queueCheck: this.rebuilding ? null : { context: text },
           });
+          if (!person) continue;
           this.db.addPersonAlias(person.id, mention.name, 'memory');
           this.db.linkMemoryPerson(memory.id, person.id, 'relationship', memory.confidence);
         }
@@ -484,7 +597,9 @@ export class UserMemoryStore {
             name,
             relationshipToUser: 'known',
             confidence: memory.confidence,
+            queueCheck: this.rebuilding ? null : { context: text },
           });
+          if (!person) continue;
           this.db.addPersonAlias(person.id, name, 'memory');
           this.db.linkMemoryPerson(memory.id, person.id, 'relationship', memory.confidence);
         }
@@ -500,7 +615,9 @@ export class UserMemoryStore {
         name,
         relationshipToUser: 'known',
         confidence: memory.confidence,
+        queueCheck: this.rebuilding ? null : { context: text },
       });
+      if (!person) continue;
       this.db.addPersonAlias(person.id, name, 'memory');
       this.db.linkMemoryPerson(memory.id, person.id, 'mention', memory.confidence);
     }
@@ -608,6 +725,27 @@ const NON_PERSON_TERMS = new Set([
   'November', 'December', 'Mercury', 'Openai', 'Anthropic', 'Kashmir', 'Article', 'Covid',
 ]);
 
+/**
+ * Words that are never (part of) a person's name: pronouns, determiners,
+ * function words, common verbs and nouns, and software/product vocabulary.
+ * Any token from this set rejects the whole candidate ("Brain Graph",
+ * "System Fixes User", "Married", "During", "She").
+ */
+const NON_NAME_TOKENS = new Set([
+  // pronouns, determiners, function words
+  'user', 'users', 'i', 'me', 'my', 'mine', 'you', 'your', 'yours', 'he', 'him', 'his', 'she', 'her', 'hers', 'it', 'its', 'we', 'us', 'our', 'they', 'them', 'their',
+  'a', 'an', 'the', 'this', 'that', 'these', 'those', 'there', 'here', 'what', 'which', 'who', 'whom', 'whose', 'when', 'where', 'why', 'how',
+  'and', 'or', 'but', 'if', 'then', 'so', 'because', 'while', 'during', 'after', 'before', 'since', 'until', 'about', 'with', 'without', 'from', 'into', 'onto', 'for', 'of', 'on', 'in', 'at', 'by', 'to', 'as', 'also', 'just', 'only', 'very', 'not', 'no', 'yes', 'all', 'any', 'some', 'each', 'every', 'both', 'more', 'most', 'other', 'another', 'such',
+  // common verbs / states that start sentences
+  'is', 'are', 'was', 'were', 'be', 'been', 'being', 'has', 'have', 'had', 'do', 'does', 'did', 'can', 'could', 'will', 'would', 'should', 'may', 'might', 'must',
+  'task', 'tasks', 'node', 'active', 'full', 'three', 'two', 'one', 'four', 'five', 'recent', 'card', 'cards', 'vulnerabilities', 'downloads', 'official', 'account', 'developing', 'email', 'jira', 'creating', 'combinator', 'console', 'status', 'ready', 'completed', 'application', 'current', 'multiple', 'part', 'colab', 'includes', 'fork', 'mentioned', 'manages', 'requested', 'form', 'context', 'assigned', 'temp', 'issue', 'issues', 'next', 'real', 'progress', 'write', 'main', 'sub', 'setting', 'successfully', 'maintainers', 'new', 'old', 'first', 'last', 'daily', 'weekly', 'india', 'pakistan', 'search', 'checker', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep',
+  'married', 'working', 'works', 'worked', 'building', 'built', 'using', 'used', 'uses', 'wants', 'wanted', 'likes', 'liked', 'prefers', 'preferred', 'asked', 'asks', 'said', 'says', 'told', 'needs', 'needed', 'started', 'finished', 'created', 'updated', 'fixed', 'fixes', 'added', 'removed', 'please', 'thanks', 'thank',
+  // roles and generic nouns
+  'assistant', 'agent', 'agents', 'bot', 'bots', 'model', 'models', 'owner', 'admin', 'team', 'company', 'project', 'projects', 'product', 'products', 'customer', 'client', 'friend', 'friends', 'family', 'wife', 'husband', 'partner', 'mother', 'father', 'son', 'daughter', 'brother', 'sister',
+  // software and product vocabulary
+  'app', 'apps', 'web', 'website', 'site', 'page', 'interface', 'ui', 'ux', 'api', 'server', 'system', 'systems', 'graph', 'brain', 'memory', 'memories', 'animation', 'dashboard', 'desktop', 'mobile', 'code', 'repo', 'stack', 'cloud', 'plugin', 'plugins', 'skill', 'skills', 'chat', 'session', 'sessions', 'file', 'files', 'folder', 'data', 'database', 'feature', 'features', 'bug', 'bugs', 'fix', 'release', 'version', 'build', 'test', 'tests', 'error', 'errors', 'mode', 'settings', 'config', 'github', 'google', 'youtube', 'whatsapp', 'telegram', 'slack', 'discord', 'twitter', 'linkedin', 'battlefield', 'prime', 'architect',
+]);
+
 interface UserRelationMention {
   name: string;
   relation: string;
@@ -678,13 +816,30 @@ function extractUserRelationshipMentions(text: string): UserRelationMention[] {
   return [...mentions.values()];
 }
 
-function extractHumanNames(segment: string): string[] {
+function extractHumanNames(segment: string, allowSentenceStart = false): string[] {
   const found = new Set<string>();
   const nameRegex = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b/g;
+  // Words capitalised somewhere OTHER than the start of a sentence: a
+  // sentence-initial "Task" or "Active" is just English, not a name.
+  const midSentence = new Set<string>();
+  const firstWords = new Set<string>();
   let match: RegExpExecArray | null;
   while ((match = nameRegex.exec(segment)) !== null) {
+    const before = segment.slice(0, match.index);
+    const atStart = /(^|[.!?:;\n•\-–—(\[]\s*)$/.test(before);
+    const first = match[1].split(' ')[0];
+    if (atStart) firstWords.add(first);
+    else midSentence.add(first);
+  }
+  nameRegex.lastIndex = 0;
+  while ((match = nameRegex.exec(segment)) !== null) {
     const name = match[1].trim();
-    if (isLikelyHumanName(name)) found.add(name);
+    if (!isLikelyHumanName(name)) continue;
+    const before = segment.slice(0, match.index);
+    const atStart = /(^|[.!?:;\n•\-–—(\[]\s*)$/.test(before);
+    const single = !name.includes(' ');
+    if (!allowSentenceStart && atStart && single && !midSentence.has(name)) continue;
+    found.add(name);
   }
   return [...found.values()];
 }
@@ -693,6 +848,7 @@ function isLikelyHumanName(name: string): boolean {
   if (!name || name.length < 2 || name.length > 48) return false;
   if (NON_PERSON_TERMS.has(name)) return false;
   const parts = name.split(' ').filter(Boolean);
+  if (parts.some((p) => NON_NAME_TOKENS.has(p.toLowerCase()))) return false;
   if (parts.length === 1 && parts[0].length < 3) return false;
   return parts.every(part => /^[A-Z][a-z]+$/.test(part));
 }
@@ -740,5 +896,16 @@ function typeToKinds(type: UserMemoryType): BeliefKind[] {
     case 'episode': return ['episode', 'situation'];
     case 'reflection': return [];
     default: return [type];
+  }
+}
+
+export { isLikelyHumanName };
+
+function parseMeta(raw: string | undefined): Record<string, unknown> {
+  try {
+    const v = JSON.parse(raw ?? '{}');
+    return v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {};
+  } catch {
+    return {};
   }
 }
