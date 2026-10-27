@@ -759,10 +759,11 @@ export class SecondBrainDB {
   }
 
   /** Live beliefs created after `since` (ms), oldest first, for incremental person indexing. */
-  beliefsSince(userKey: string, since: number, limit = 500): Array<{ id: string; statement: string; detail: string | null; kind: string; confidence: number; created_at: number }> {
-    return this.db.prepare(`SELECT id, statement, detail, kind, MIN(1, 0.5 + support / 10.0) AS confidence, created_at FROM beliefs
-      WHERE owner_key = ? AND created_at > ? AND status IN ('candidate', 'held', 'confirmed', 'contested') ORDER BY created_at ASC LIMIT ?`)
-      .all(userKey, since, limit) as Array<{ id: string; statement: string; detail: string | null; kind: string; confidence: number; created_at: number }>;
+  /** Beliefs after a (created_at, rowid) cursor, in the order they were made: two made in the same millisecond are both seen. */
+  beliefsSince(userKey: string, since: number, limit = 500, sinceSeq = -1): Array<{ id: string; statement: string; detail: string | null; kind: string; confidence: number; created_at: number; seq: number }> {
+    return this.db.prepare(`SELECT id, statement, detail, kind, MIN(1, 0.5 + support / 10.0) AS confidence, created_at, rowid AS seq FROM beliefs
+      WHERE owner_key = ? AND (created_at > ? OR (created_at = ? AND rowid > ?)) AND status IN ('candidate', 'held', 'confirmed', 'contested') ORDER BY created_at ASC, rowid ASC LIMIT ?`)
+      .all(userKey, since, since, sinceSeq, limit) as Array<{ id: string; statement: string; detail: string | null; kind: string; confidence: number; created_at: number; seq: number }>;
   }
 
   // ── Owner curation of people ─────────────────────────────────────────────

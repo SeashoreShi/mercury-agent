@@ -360,9 +360,10 @@ export class UserMemoryStore {
         this.indexPersonsForMemoryRow(row);
       }
       // The live brain: every current belief, as of now.
-      const cursor = Date.now();
-      for (const b of this.db.beliefsSince(this.userKey, 0, 100_000)) this.indexPersonsForBelief(b);
-      this.db.setMeta(`${this.userKey}:persons_belief_cursor`, String(cursor));
+      const all = this.db.beliefsSince(this.userKey, 0, 100_000);
+      for (const b of all) this.indexPersonsForBelief(b);
+      const last = all[all.length - 1];
+      this.db.setMeta(`${this.userKey}:persons_belief_cursor`, last ? `${last.created_at}:${last.seq}` : String(Date.now()));
     } finally {
       this.rebuilding = false;
     }
@@ -627,10 +628,11 @@ export class UserMemoryStore {
    */
   indexNewBeliefs(): number {
     this.ensurePersonsBackfilled();
-    const since = Number(this.db.getMeta(`${this.userKey}:persons_belief_cursor`) ?? '0') || 0;
-    const fresh = this.db.beliefsSince(this.userKey, since, 200);
+    // Cursor "created_at:rowid"; a bare "created_at" covers that whole millisecond.
+    const [at, seq] = (this.db.getMeta(`${this.userKey}:persons_belief_cursor`) ?? '0').split(':');
+    const fresh = this.db.beliefsSince(this.userKey, Number(at) || 0, 200, seq === undefined ? Number.MAX_SAFE_INTEGER : Number(seq) || 0);
     for (const b of fresh) this.indexPersonsForBelief(b);
-    if (fresh.length) this.db.setMeta(`${this.userKey}:persons_belief_cursor`, String(fresh[fresh.length - 1].created_at));
+    if (fresh.length) { const last = fresh[fresh.length - 1]; this.db.setMeta(`${this.userKey}:persons_belief_cursor`, `${last.created_at}:${last.seq}`); }
     return fresh.length;
   }
 
