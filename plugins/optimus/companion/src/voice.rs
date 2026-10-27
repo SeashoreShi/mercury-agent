@@ -256,6 +256,11 @@ async fn bridge(
     let mut tock = false;
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut last_narrated = Instant::now() - Duration::from_secs(60);
+    // Voice levels for Mercury Desktop's call screen (~12 a second while anyone is audible).
+    let mut level_tick = tokio::time::interval(Duration::from_millis(80));
+    level_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut mic_peak: i16 = 0;
+    let mut levels_quiet = false;
 
     // Silence ends the session by itself, so an open mic never streams (and bills) for nothing.
     let idle_stop = settings().get("idleStopSeconds").and_then(Value::as_f64).unwrap_or(60.0).max(0.0);
@@ -370,10 +375,22 @@ async fn bridge(
                     }
                 }
             },
+            _ = level_tick.tick() => {
+                let mic_level = if muted.load(std::sync::atomic::Ordering::Relaxed) { 0.0 } else { (mic_peak as f32 / 32768.0 * 3.0).min(1.0) };
+                let out_level = (out.take_level() * 2.2).min(1.0);
+                mic_peak = 0;
+                let quiet = mic_level < 0.02 && out_level < 0.02;
+                // Say "silent" once, then stay quiet until someone is audible again.
+                if !(quiet && levels_quiet) {
+                    sh.out.notify("mercury/voice/level", json!({ "callId": call_id, "mic": (mic_level * 100.0).round() / 100.0, "out": (out_level * 100.0).round() / 100.0 }));
+                }
+                levels_quiet = quiet;
+            }
             frame = mic.recv() => {
                 let Some(frame) = frame else { break Err("the microphone stopped".to_string()) };
                 // Muted: nothing the owner says is sent anywhere.
                 if muted.load(std::sync::atomic::Ordering::Relaxed) { continue; }
+                mic_peak = mic_peak.max(frame.iter().map(|s| s.saturating_abs()).max().unwrap_or(0));
                 // With speakers, the mic would hear Mercury: send silence while it talks.
                 let muted = !barge_in && out.recently_audible(350);
                 link.send(LinkCmd::Audio(if muted { silence.clone() } else { frame }));
@@ -485,11 +502,16 @@ async fn bridge(
                         }
                     }
                     LinkEvent::AssistantText(t) => {
-                        if !t.is_empty() { transcript.push(json!({ "role": "mercury", "text": t })); }
+                        if !t.is_empty() {
+                            // Live, for the call screen and the call's chat thread.
+                            sh.out.notify("mercury/voice/transcript", json!({ "callId": call_id, "role": "mercury", "text": t }));
+                            transcript.push(json!({ "role": "mercury", "text": t }));
+                        }
                     }
                     LinkEvent::UserText(t) => {
                         if t.is_empty() { continue; }
                         last_activity = Instant::now();
+                        sh.out.notify("mercury/voice/transcript", json!({ "callId": call_id, "role": "owner", "text": t.clone() }));
                         transcript.push(json!({ "role": "owner", "text": t.clone() }));
                         user_said.push((Instant::now(), t.clone()));
                         if user_said.len() > 20 { user_said.remove(0); }

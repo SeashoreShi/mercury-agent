@@ -355,6 +355,19 @@ fn on_mercury(shared: &Arc<Shared>, msg: &Value) {
         // Mercury Desktop's voice controls (the notch capsule and the status bar).
         "mercury/voice/control" => {
             let action = p.get("action").and_then(Value::as_str).unwrap_or("");
+            // Start a session from the app, as if the talk key were pressed (only when none is running).
+            if action == "start" {
+                if shared.session.lock().unwrap().is_none() {
+                    let sh = shared.clone();
+                    shared.rt.spawn(async move {
+                        if let Err(e) = crate::voice::press(sh, false).await {
+                            log(format!("start from Mercury: {e}"));
+                            error_sound();
+                        }
+                    });
+                }
+                return;
+            }
             let live = shared.session.lock().unwrap();
             if let Some(s) = live.as_ref() {
                 match action {
