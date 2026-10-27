@@ -102,6 +102,7 @@ import { setCloudReload } from './web/api/cloud.js';
 import { spawnDetachedRestart } from './cli/daemon.js';
 import { recordVoiceCalls } from './plugins/voice-calls.js';
 import { setChannelRuntime } from './web/api/channels.js';
+import { setSkillBuilder } from './web/api/system.js';
 import { isWebAuthInitialized, setWebPassword, writeAttachToken, initWebAuth } from './web/auth.js';
 import { startLoopLagMonitor } from './utils/loop-lag.js';
 import { McpManager, probeMcpServer, validateMcpConfig, type McpServerStatus } from './capabilities/mcp/index.js';
@@ -3490,6 +3491,8 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
   setWebBgTasks(agent.backgroundTasks);
   setWebModelSwitch((provider, model) => agent.switchProvider(provider, model));
   setProvidersReload(() => agent.reloadProviders());
+  // Settings-free skill builder: the default model writes a skill from the owner's description.
+  setSkillBuilder({ provider: () => providers.getDefault(), tools: () => Object.keys(capabilities.getTools()).sort() });
   setCloudReload(() => agent.reloadProviders());
   setWebStop(() => agent.stopAllWork('stopped'));
   setWebCurrentProvider(() => agent.getCurrentProvider());
