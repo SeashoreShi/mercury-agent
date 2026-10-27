@@ -1,4 +1,5 @@
 import { Plus } from "lucide-react";
+import { FieldMic } from "~/components/dictation/Dictation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { brain, MEMORY_TYPES, type BrainMemory } from "~/api/brain";
 import { Button } from "~/components/ui/Button";
@@ -106,8 +107,8 @@ function MemoryRow({ m, focused, onRemoved, onSaved }: { m: BrainMemory; focused
       </div>
       {editing ? (
         <div className="mt-2 flex flex-col gap-2">
-          <textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={2} className="w-full rounded-md border border-line bg-bg px-3 py-2 text-base text-ink focus:border-accent/60" aria-label="Memory" />
-          <textarea value={detail} onChange={(e) => setDetail(e.target.value)} rows={2} placeholder="Detail (optional)" className="w-full rounded-md border border-line bg-bg px-3 py-2 text-sm text-ink2 focus:border-accent/60" aria-label="Detail" />
+          <div className="relative"><textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={2} className="w-full rounded-md border border-line bg-bg py-2 pl-3 pr-10 text-base text-ink focus:border-accent/60" aria-label="Memory" /><FieldMic value={summary} onChange={setSummary} /></div>
+          <div className="relative"><textarea value={detail} onChange={(e) => setDetail(e.target.value)} rows={2} placeholder="Detail (optional)" className="w-full rounded-md border border-line bg-bg py-2 pl-3 pr-10 text-sm text-ink2 focus:border-accent/60" aria-label="Detail" /><FieldMic value={detail} onChange={setDetail} /></div>
           <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button><Button size="sm" variant="primary" loading={busy} disabled={!summary.trim()} onClick={() => void save()}>Save</Button></div>
         </div>
       ) : (

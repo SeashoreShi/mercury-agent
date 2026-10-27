@@ -1,5 +1,6 @@
 import { ChevronDown, Play, RefreshCw, Square, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { DictationNotice, MicButton, RecordingBar, joinText, useDictation } from "~/components/dictation/Dictation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cx } from "~/lib/cx";
 import * as api from "~/api/mercury";
 import type { BotManifest, BotStatus } from "~/api/types";
@@ -296,8 +297,14 @@ function BotBody({ id, status }: { id: string; status: BotStatus | null }) {
   const [message, setMessage] = useState("");
   const [note, setNote] = useState<string | null>(null);
   useEffect(() => { setNote(null); setMessage(""); }, [id]);
-  async function send() {
-    const text = message.trim();
+  const messageRef = useRef(message);
+  messageRef.current = message;
+  const dictation = useDictation((spoken, mode) => {
+    const next = joinText(messageRef.current, spoken);
+    if (mode === "send") void send(next); else setMessage(next);
+  });
+  async function send(override?: string) {
+    const text = (override ?? message).trim();
     if (!text) return;
     try {
       const res = await api.bots.message(id, text);
@@ -312,10 +319,16 @@ function BotBody({ id, status }: { id: string; status: BotStatus | null }) {
     <>
       <div className="flex flex-col gap-2">
         <SectionTitle>Tell {bot.fleetRole === "lead" ? "the fleet" : "it"} something</SectionTitle>
-        <div className="flex gap-2">
-          <Input value={message} onChange={(e) => setMessage(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void send(); }} placeholder={`Message ${bot.name}…`} className="h-10 text-base" />
-          <Button variant="primary" size="lg" onClick={() => void send()} disabled={!message.trim()}>Send</Button>
-        </div>
+        {dictation.phase === "recording" ? (
+          <div className="rounded-full border border-line bg-surface px-3 py-1"><RecordingBar d={dictation} canSend /></div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Input value={message} onChange={(e) => setMessage(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void send(); }} placeholder={`Message ${bot.name}…`} className="h-10 text-base" />
+            <MicButton d={dictation} />
+            <Button variant="primary" size="lg" onClick={() => void send()} disabled={!message.trim()}>Send</Button>
+          </div>
+        )}
+        <DictationNotice d={dictation} />
         {note && <p className="text-sm text-ink3">{note}</p>}
       </div>
       {bot.schedules && bot.schedules.length > 0 && (

@@ -7,6 +7,7 @@ import { Field, Input } from "~/components/ui/Input";
 import { Badge, Segmented, Spinner } from "~/components/ui/bits";
 import { ConfirmButton } from "~/components/ui/kit";
 import { cx } from "~/lib/cx";
+import { FieldMic } from "~/components/dictation/Dictation";
 
 /**
  * A person's contact card: view, edit (name, person or pet, relationship,
@@ -182,7 +183,7 @@ function EditForm({ person, onCancel, onSaved }: { person: BrainPerson; onCancel
           <Button type="button" size="sm" variant="outline" onClick={() => void save(true)}>Move it to {name.trim() || person.name}</Button>
         </div>
       )}
-      <Field label="About" htmlFor="pc-sum"><textarea id="pc-sum" value={summary} onChange={(e) => setSummary(e.target.value)} rows={2} className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink focus:border-accent/60" /></Field>
+      <Field label="About" htmlFor="pc-sum"><div className="relative"><textarea id="pc-sum" value={summary} onChange={(e) => setSummary(e.target.value)} rows={2} className="w-full rounded-md border border-line bg-surface py-2 pl-3 pr-10 text-sm text-ink focus:border-accent/60" /><FieldMic value={summary} onChange={setSummary} /></div></Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Phone" htmlFor="pc-phone"><Input id="pc-phone" value={meta.phone ?? ""} onChange={set("phone")} /></Field>
         <Field label="Email" htmlFor="pc-email"><Input id="pc-email" value={meta.email ?? ""} onChange={set("email")} /></Field>
@@ -192,7 +193,7 @@ function EditForm({ person, onCancel, onSaved }: { person: BrainPerson; onCancel
         <Field label="Role" htmlFor="pc-role"><Input id="pc-role" value={meta.role ?? ""} onChange={set("role")} /></Field>
       </div>
       <Field label="Links (one per line)" htmlFor="pc-links"><textarea id="pc-links" value={links} onChange={(e) => setLinks(e.target.value)} rows={2} className="w-full rounded-md border border-line bg-surface px-3 py-2 font-mono text-xs text-ink focus:border-accent/60" /></Field>
-      <Field label="Notes" htmlFor="pc-notes"><textarea id="pc-notes" value={meta.notes ?? ""} onChange={set("notes")} rows={3} className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink focus:border-accent/60" /></Field>
+      <Field label="Notes" htmlFor="pc-notes"><div className="relative"><textarea id="pc-notes" value={meta.notes ?? ""} onChange={set("notes")} rows={3} className="w-full rounded-md border border-line bg-surface py-2 pl-3 pr-10 text-sm text-ink focus:border-accent/60" /><FieldMic value={meta.notes ?? ""} onChange={(v) => setMeta((m) => ({ ...m, notes: v }))} /></div></Field>
       {error && <p className="text-sm text-red">{error}</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>

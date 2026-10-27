@@ -64,7 +64,8 @@
           "width": 660,
           "height": 400
         }
-      }
+      },
+      "entitlements": "./Entitlements.plist"
     },
     "windows": {
       "webviewInstallMode": {

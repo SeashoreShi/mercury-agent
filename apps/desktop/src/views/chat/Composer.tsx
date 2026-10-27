@@ -9,11 +9,12 @@ import { useConversation, useConversationStore, type Surface } from "~/app/conve
 import { Button } from "~/components/ui/Button";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "~/components/ui/Menu";
 import { Tooltip } from "~/components/ui/Tooltip";
+import { DictationNotice, MicButton, RecordingBar, joinText, useDictation } from "~/components/dictation/Dictation";
 
 /**
  * One box. Enter sends, Shift+Enter breaks a line, Esc clears. Photos and
  * PDFs come in by the paperclip, paste or drag-and-drop (up to 4, the
- * runtime's limit). Below: the model and Ask Me / Allow All, one click each.
+ * runtime's limit). The mic dictates: ✓ puts the words in, ↑ sends them. Below: the model and Ask Me / Allow All, one click each.
  * Focus shows as a soft ring on the whole box, never a line inside it.
  */
 interface Pending {
@@ -60,6 +61,25 @@ export function Composer({ surface, placeholder, code, extra, blockedReason, mon
   const stopping = useConversation((s) => s.stopping);
   const convStore = useConversationStore();
   const connected = useRuntimeState((s) => s.connected);
+  const textRef = useRef(text);
+  textRef.current = text;
+  const dictation = useDictation((spoken, mode) => {
+    const next = joinText(textRef.current, spoken);
+    if (mode === "send") { void submit(next); return; }
+    setText(next);
+    requestAnimationFrame(() => { const el = ref.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } });
+  });
+  const recording = dictation.phase === "recording";
+  // Esc throws the take away, Enter sends it, while recording.
+  useEffect(() => {
+    if (!recording) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.preventDefault(); dictation.finish("cancel"); }
+      else if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); dictation.finish(canSendRef.current ? "send" : "insert"); }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [recording]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (draft == null) return;
@@ -123,8 +143,8 @@ export function Composer({ surface, placeholder, code, extra, blockedReason, mon
     });
   }
 
-  async function submit() {
-    const content = text.trim();
+  async function submit(override?: string) {
+    const content = (override ?? text).trim();
     if ((!content && files.length === 0) || sending) return;
     setSending(true);
     setError(null);
@@ -149,11 +169,14 @@ export function Composer({ surface, placeholder, code, extra, blockedReason, mon
     void stopTurn(convStore).catch((err) => setError(err instanceof Error ? `Couldn't stop: ${err.message}` : "Couldn't stop"));
   }
   const canSend = connected && !blockedReason && (text.trim().length > 0 || files.length > 0);
+  const canSendRef = useRef(false);
+  canSendRef.current = connected && !blockedReason;
 
   return (
     <div className="shrink-0 px-8 pb-6 pt-2">
       <div className="mx-auto w-full max-w-[780px]">
         {error && <div className="mb-2 px-1 text-sm text-red">{error}</div>}
+        <DictationNotice d={dictation} className="mb-2" />
         <div
           onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true); } }}
           onDragLeave={() => setDragging(false)}
@@ -180,6 +203,9 @@ export function Composer({ surface, placeholder, code, extra, blockedReason, mon
               ))}
             </div>
           )}
+          {recording ? (
+            <div className="px-4 pb-1 pt-3"><RecordingBar d={dictation} canSend={connected && !blockedReason} /></div>
+          ) : (
           <div className="flex">
           {mono && <span aria-hidden="true" className="pointer-events-none select-none pl-5 pt-4 font-mono text-md leading-[26px] text-accent">&gt;</span>}
           <textarea
@@ -200,6 +226,7 @@ export function Composer({ surface, placeholder, code, extra, blockedReason, mon
             aria-label="Message"
           />
           </div>
+          )}
           <div className="flex flex-wrap items-center gap-1 px-3 pb-3 pt-1.5">
             <Tooltip label="Attach images or PDFs" side="top">
               <Button variant="ghost" size="md" icon onClick={() => picker.current?.click()} disabled={!connected || files.length >= MAX_FILES} aria-label="Attach">
@@ -223,7 +250,8 @@ export function Composer({ surface, placeholder, code, extra, blockedReason, mon
             ) : text.length > 0 ? (
               <span className="mr-2 hidden text-2xs text-ink4 sm:inline">⇧↵ new line</span>
             ) : null}
-            {showStop ? (
+            {!recording && <MicButton d={dictation} disabled={!connected} />}
+            {recording ? null : showStop ? (
               <Tooltip label={stopping ? "Stopping…" : "Stop"} shortcut="esc" side="top">
                 <Button variant="primary" size="md" icon onClick={stop} disabled={stopping || !connected} aria-label="Stop" className="!rounded-full">
                   <Square size={13} className="fill-current" strokeWidth={0} />

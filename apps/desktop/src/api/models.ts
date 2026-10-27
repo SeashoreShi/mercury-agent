@@ -1,4 +1,4 @@
-import { http } from "./client";
+import { http, request } from "./client";
 import type { PluginItem } from "./types";
 
 /** Model providers and gateways (GET/POST /api/providers*), voice key checks, and Optimus voice settings. */
@@ -131,4 +131,15 @@ export const cloudApi = {
   startSignIn: () => http.post<CloudSignIn>("/api/cloud/signin"),
   signIn: () => http.get<CloudSignIn | { status: "none" }>("/api/cloud/signin"),
   cancelSignIn: () => http.delete<{ ok: boolean }>("/api/cloud/signin"),
+};
+
+/** Dictation: GET tells whether a speech service is set up; POST sends raw audio and gets text back. */
+export const transcribeApi = {
+  status: () => http.get<{ available: boolean; engine: string | null }>("/api/transcribe"),
+  send: (audio: Blob, language?: string) =>
+    request<{ text: string; engine: string }>(`/api/transcribe${language ? `?language=${encodeURIComponent(language)}` : ""}`, {
+      method: "POST",
+      body: audio,
+      headers: { "Content-Type": audio.type || "audio/webm" },
+    }),
 };
