@@ -35,6 +35,8 @@ function toThread(session: ReturnType<SessionRepository['get']>, includeMessages
     shortId: session.shortId,
     alias: session.alias,
     title: session.title,
+    // A desktop voice call saved as a thread (voice-calls.ts).
+    voiceCall: typeof session.messages[0]?.metadata?.voiceCall === 'string',
     createdAt: new Date(session.createdAt).toISOString(),
     updatedAt: new Date(session.updatedAt).toISOString(),
     messages: includeMessages ? session.messages.map((message) => ({
@@ -45,6 +47,7 @@ function toThread(session: ReturnType<SessionRepository['get']>, includeMessages
       timestamp: new Date(message.timestamp).toISOString(),
       kind: message.kind,
       sequence: message.sequence,
+      ...(typeof message.metadata?.voiceRole === 'string' ? { voice: message.metadata.voiceRole } : {}),
       ...(Array.isArray(message.metadata?.attachments) && message.metadata.attachments.length > 0
         ? { attachments: (message.metadata.attachments as Array<{ name: string; kind: string; mime?: string; ref: string }>).map((a) => ({ name: a.name, kind: a.kind, mime: a.mime, url: `/api/chat/uploads/${a.ref}` })) }
         : {}),

@@ -11,7 +11,12 @@
  * already kept by the session store like any other turn.
  */
 
-export type VoiceRole = 'owner' | 'mercury' | 'activity' | 'approval' | 'system';
+/**
+ * owner: what the owner said · mercury: what Mercury said out loud ·
+ * result: Mercury's full answer behind what it said (details, links) ·
+ * activity: what it's doing · approval: what it's asking to do.
+ */
+export type VoiceRole = 'owner' | 'mercury' | 'result' | 'activity' | 'approval' | 'system';
 
 export interface VoiceTurn {
   id: number;
@@ -35,21 +40,28 @@ export interface VoiceState {
   thinking: boolean;
   activity: string | null;
   outcome: string | null;
+  /** The chat thread this call is saved to, live (see voice-calls.ts). */
+  threadId: string | null;
   turns: VoiceTurn[];
 }
 
-export type VoiceAction = 'mute' | 'unmute' | 'interrupt' | 'stop';
-export const VOICE_ACTIONS: readonly VoiceAction[] = ['mute', 'unmute', 'interrupt', 'stop'];
+/** How loud the owner (mic) and Mercury (speaker) are right now, 0-1. Not stored; streamed ~12×/s. */
+export interface VoiceLevels { mic: number; out: number; at: number }
 
-type Listener = (event: { type: 'state' | 'turn'; state: VoiceState; turn?: VoiceTurn }) => void;
+export type VoiceAction = 'start' | 'mute' | 'unmute' | 'interrupt' | 'stop';
+export const VOICE_ACTIONS: readonly VoiceAction[] = ['start', 'mute', 'unmute', 'interrupt', 'stop'];
+
+type Listener = (event: { type: 'state' | 'turn' | 'level'; state: VoiceState; turn?: VoiceTurn; levels?: VoiceLevels }) => void;
 
 const MAX_TURNS = 200;
 
 class VoiceFeed {
   private state: VoiceState = {
     available: false, plugin: null, active: false, callId: null, startedAt: null, endedAt: null,
-    listening: false, speaking: false, working: false, muted: false, thinking: false, activity: null, outcome: null, turns: [],
+    listening: false, speaking: false, working: false, muted: false, thinking: false, activity: null, outcome: null, threadId: null, turns: [],
   };
+  /** The plugin streams what's said as it's said (Optimus 0.5+); older ones only report questions and answers. */
+  private live = false;
   private seq = 0;
   private listeners = new Set<Listener>();
   private controller: ((action: VoiceAction) => void) | null = null;
@@ -75,15 +87,37 @@ class VoiceFeed {
     this.patch({ available: false, listening: false, speaking: false, working: false, muted: false, thinking: false, active: false });
   }
 
+  /** 'start' needs a plugin and no session running; the rest need a running session. */
   control(action: VoiceAction): boolean {
-    if (!this.controller || !this.state.active) return false;
+    if (!this.controller) return false;
+    if (action === 'start' ? this.state.active : !this.state.active) return false;
     this.controller(action);
     return true;
   }
 
   started(callId: string): void {
     if (this.state.active && this.state.callId === callId) return;
-    this.patch({ active: true, callId, startedAt: Date.now(), endedAt: null, outcome: null, thinking: false, activity: null, turns: [] });
+    this.live = false;
+    this.patch({ active: true, callId, startedAt: Date.now(), endedAt: null, outcome: null, thinking: false, activity: null, threadId: null, turns: [] });
+  }
+
+  /** What was said out loud, as it's said: the owner, or Mercury's voice. */
+  said(callId: string, role: 'owner' | 'mercury', text: string): void {
+    const t = text.trim();
+    if (!t) return;
+    if (callId) this.started(callId);
+    this.live = true;
+    this.push(role, t);
+  }
+
+  levels(mic: number, out: number): void {
+    if (!this.state.active) return;
+    const clamp = (n: number) => (Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0);
+    this.emit({ type: 'level', state: this.state, levels: { mic: clamp(mic), out: clamp(out), at: Date.now() } });
+  }
+
+  setThread(threadId: string): void {
+    this.patch({ threadId });
   }
 
   activity(p: { listening: boolean; working: boolean; muted: boolean; speaking?: boolean }): void {
@@ -96,7 +130,9 @@ class VoiceFeed {
   asked(callId: string, question: string): void {
     this.started(callId);
     this.patch({ thinking: true, activity: null });
-    this.push('owner', question);
+    // With a live transcript the owner's own words are already there; this is the request it became.
+    if (this.live) this.push('activity', `Asked Mercury: ${question}`);
+    else this.push('owner', question);
   }
 
   doing(activity: string): void {
@@ -108,7 +144,8 @@ class VoiceFeed {
   answered(answer: string): void {
     if (!this.state.active) return;
     this.patch({ thinking: false, activity: null });
-    this.push('mercury', answer);
+    // Live: the voice speaks a summary on its own; keep the full answer as the detail behind it.
+    this.push(this.live ? 'result' : 'mercury', answer);
   }
 
   approval(prompt: string): void {
@@ -125,7 +162,8 @@ class VoiceFeed {
   reset(): void {
     this.controller = null;
     this.seq = 0;
-    this.state = { ...this.state, available: false, plugin: null, active: false, callId: null, startedAt: null, endedAt: null, listening: false, speaking: false, working: false, muted: false, thinking: false, activity: null, outcome: null, turns: [] };
+    this.live = false;
+    this.state = { ...this.state, available: false, plugin: null, active: false, callId: null, startedAt: null, endedAt: null, listening: false, speaking: false, working: false, muted: false, thinking: false, activity: null, outcome: null, threadId: null, turns: [] };
   }
 
   private push(role: VoiceRole, text: string): void {

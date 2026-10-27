@@ -279,6 +279,15 @@ export class PluginChannel extends BaseChannel {
     else if (method === 'mercury/channel/message') this.onMessageNotification(params as IncomingParams);
     else if (method === 'mercury/call/ended') this.onCallEnded(params);
     else if (method === 'mercury/channel/activity') this.onActivity(params);
+    else if (method === 'mercury/voice/transcript' && this.desktop) {
+      // Optimus 0.5+: each thing said on a desktop session, as it's said.
+      const p = (params ?? {}) as Record<string, unknown>;
+      const role = p.role === 'owner' ? 'owner' : p.role === 'mercury' ? 'mercury' : null;
+      if (role && typeof p.text === 'string') voiceFeed.said(String(p.callId ?? ''), role, p.text.slice(0, 4000));
+    } else if (method === 'mercury/voice/level' && this.desktop) {
+      const p = (params ?? {}) as Record<string, unknown>;
+      voiceFeed.levels(Number(p.mic ?? 0), Number(p.out ?? 0));
+    }
   }
 
   async handleRequest(method: string, params: unknown): Promise<unknown> {

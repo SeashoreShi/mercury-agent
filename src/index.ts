@@ -98,6 +98,7 @@ import { startWebServer, stopWebServer, updateStatus as updateWebStatus, setUser
 import { validateApiKey, validateBaseUrl, validateModelName } from './providers/provider-meta.js';
 import { setFirstProviderHandler, setProvidersReload } from './web/api/providers.js';
 import { spawnDetachedRestart } from './cli/daemon.js';
+import { recordVoiceCalls } from './plugins/voice-calls.js';
 import { isWebAuthInitialized, setWebPassword, writeAttachToken, initWebAuth } from './web/auth.js';
 import { startLoopLagMonitor } from './utils/loop-lag.js';
 import { McpManager, probeMcpServer, validateMcpConfig, type McpServerStatus } from './capabilities/mcp/index.js';
@@ -2502,6 +2503,8 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
   migrateLegacyMemory();
   const shortTerm = new ShortTermMemory(config);
   const sessions = new SessionRepository();
+  // Desktop voice calls are saved as chat threads, live.
+  recordVoiceCalls(sessions);
   setWebSessions(sessions);
   const longTerm = new LongTermMemory(config);
   const episodic = new EpisodicMemory(config);
