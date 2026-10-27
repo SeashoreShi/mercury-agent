@@ -73,6 +73,7 @@ import { SpotifyClient } from './spotify/client.js';
 import { ChannelRegistry } from './channels/registry.js';
 import { CLIChannel } from './channels/cli.js';
 import { TelegramChannel } from './channels/telegram.js';
+import type { Channel } from './channels/base.js';
 import { SignalChannel } from './channels/signal.js';
 import { DiscordChannel } from './channels/discord.js';
 import { WebChannel } from './channels/web.js';
@@ -100,6 +101,7 @@ import { setFirstProviderHandler, setProvidersReload } from './web/api/providers
 import { setCloudReload } from './web/api/cloud.js';
 import { spawnDetachedRestart } from './cli/daemon.js';
 import { recordVoiceCalls } from './plugins/voice-calls.js';
+import { setChannelRuntime } from './web/api/channels.js';
 import { isWebAuthInitialized, setWebPassword, writeAttachToken, initWebAuth } from './web/auth.js';
 import { startLoopLagMonitor } from './utils/loop-lag.js';
 import { McpManager, probeMcpServer, validateMcpConfig, type McpServerStatus } from './capabilities/mcp/index.js';
@@ -3470,6 +3472,17 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
   if (sigChannel) {
     sigChannel.setChatCommandContext(capabilities.getChatCommandContext()!);
   }
+
+  // Settings → Channels: changes apply to this live config, and a channel restarts on its own.
+  const wireChannel = (ch: Channel) => {
+    if (ch instanceof TelegramChannel || ch instanceof SignalChannel) ch.setChatCommandContext(capabilities.getChatCommandContext()!);
+  };
+  setChannelRuntime({
+    config: () => config,
+    restart: (type) => channels.restart(type, config, wireChannel),
+    running: (type) => channels.get(type)?.isReady() ?? false,
+    notify: (type, target, text) => channels.get(type)?.send(text, target) ?? Promise.resolve(),
+  });
 
   setWebWebChannel(webChannel);
   setWebSessionSyncEnabled(() => agent.isSessionSyncEnabled());
