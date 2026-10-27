@@ -52,7 +52,7 @@ interface MapLink extends LinkObject<MapNode> {
 }
 
 const PINS_KEY = "mercury.brain.map.pins.v1";
-const LOOSE = "loose";
+export const LOOSE = "loose";
 /** Twelve hues that read on light and dark; a theme keeps its hue while its id lives. */
 const HUES = ["#5B8DEF", "#E0739B", "#3FB37F", "#D4A72C", "#9B7BD8", "#E8894A", "#2BB5C9", "#C9644F", "#7AA33B", "#B565C9", "#4F9AA8", "#D08A2E"];
 const KIND_LABEL: Record<string, string> = {
@@ -67,7 +67,7 @@ function hash(s: string): number {
 }
 
 /** Stable colours: each theme hashes to a hue; clashes step to the next free one. */
-function themeColors(ids: string[]): Map<string, string> {
+export function themeColors(ids: string[]): Map<string, string> {
   const out = new Map<string, string>();
   const used = new Set<number>();
   for (const id of ids) {

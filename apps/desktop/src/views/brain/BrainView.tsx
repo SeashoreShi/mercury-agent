@@ -7,22 +7,24 @@ import { PageHeader } from "~/components/ui/kit";
 import { BrainGraph, type SelectableKind } from "./BrainGraph";
 import { Memories } from "./Memories";
 import { MindMap } from "./MindMap";
+import { NoteWeb } from "./NoteWeb";
 import { People } from "./People";
 import { PersonCard } from "./PersonCard";
 
-type Tab = "map" | "graph" | "memories" | "people";
+type Tab = "mind" | "map" | "graph" | "memories" | "people";
 const TAB_KEY = "mercury.brain.tab";
 
 /**
- * The second brain: a mind map of everything known, a living graph of
- * people, the memories, and the people. Each tab loads its data only when
+ * The second brain: the mind map (every note and its connections), the
+ * themes (the same notes as a radial tree), a living graph of people, the
+ * memories, and the people. Each tab loads its data only when
  * first opened; canvases pause while hidden; each part is behind its own
  * crash boundary.
  */
 export function BrainView() {
   const view = useUi((s) => s.view);
-  const [tab, setTab] = useState<Tab>(() => { try { return (sessionStorage.getItem(TAB_KEY) as Tab) || "map"; } catch { return "map"; } });
-  const [opened, setOpened] = useState<Record<Tab, boolean>>({ map: false, graph: false, memories: false, people: false });
+  const [tab, setTab] = useState<Tab>(() => { try { return (sessionStorage.getItem(TAB_KEY) as Tab) || "mind"; } catch { return "mind"; } });
+  const [opened, setOpened] = useState<Record<Tab, boolean>>({ mind: false, map: false, graph: false, memories: false, people: false });
   const [selected, setSelected] = useState<{ id: string; kind: SelectableKind } | null>(null);
   const [people, setPeople] = useState<BrainPerson[]>([]);
   const visible = view === "brain";
@@ -35,14 +37,21 @@ export function BrainView() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader title="Brain">
-        <Segmented size="md" value={tab} onChange={setTab} options={[{ value: "map", label: "Map" }, { value: "graph", label: "Graph" }, { value: "memories", label: "Memories" }, { value: "people", label: "People" }]} />
+        <Segmented size="md" value={tab} onChange={setTab} options={[{ value: "mind", label: "Mind map" }, { value: "map", label: "Themes" }, { value: "graph", label: "Graph" }, { value: "memories", label: "Memories" }, { value: "people", label: "People" }]} />
       </PageHeader>
       <div className="relative min-h-0 flex-1">
-        <div className={tab === "map" || tab === "graph" ? "absolute inset-0 flex" : "hidden"}>
+        <div className={tab === "mind" || tab === "map" || tab === "graph" ? "absolute inset-0 flex" : "hidden"}>
           <div className="relative min-w-0 flex-1">
+            <div className={tab === "mind" ? "absolute inset-0" : "hidden"}>
+              {opened.mind && (
+                <ErrorBoundary label="The mind map" resetKey={tab}>
+                  <NoteWeb visible={visible && tab === "mind"} selectedId={selected?.id ?? null} onSelect={setSelected} />
+                </ErrorBoundary>
+              )}
+            </div>
             <div className={tab === "map" ? "absolute inset-0" : "hidden"}>
               {opened.map && (
-                <ErrorBoundary label="The map" resetKey={tab}>
+                <ErrorBoundary label="Themes" resetKey={tab}>
                   <MindMap visible={visible && tab === "map"} selectedId={selected?.id ?? null} onSelect={setSelected} />
                 </ErrorBoundary>
               )}
