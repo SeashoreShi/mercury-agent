@@ -295,7 +295,20 @@ export interface McpServer {
 
 export interface Skill {
   name: string;
-  path: string;
   active: boolean;
   description?: string;
+  /** Written by Mercury (or with the skill builder), not installed. */
+  selfMade?: boolean;
+  version?: string | null;
+  allowedTools?: string[];
+  hasScripts?: boolean;
+}
+
+/** A skill the builder wrote, for review before saving. */
+export interface SkillDraft {
+  name: string;
+  description: string;
+  intents: string[];
+  instructions: string;
+  allowedTools?: string[];
 }

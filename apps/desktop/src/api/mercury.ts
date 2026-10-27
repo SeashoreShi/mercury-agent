@@ -4,7 +4,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 import { http, ApiError } from "./client";
-import type {
+import type { SkillDraft,
   BotManifest, BotRunRecord, BotStatus, ChatMessage, ChatSettings, ChatThread, CodeStatus, HealthInfo,
   McpServer, ModelsResponse, CodeMode, CostReport, Deliverable, RunTranscript, PairResponse, PluginItem, ReasoningChoice, Skill, DeviceSummary,
 } from "./types";
@@ -122,6 +122,10 @@ export const skills = {
   remove: (name: string) => http.delete<{ success: boolean }>(`/api/skills/${encodeURIComponent(name)}`),
   installFromRegistry: (id: string) => http.post<{ success: boolean; id: string; version: string; status: string }>("/api/skills/install-from-registry", { id, force: false }),
   install: (url: string) => http.post<{ success: boolean; name: string }>("/api/skills/install", { url }),
+  /** The skill builder: Mercury's model writes a skill from a description (or revises one). Nothing is saved. */
+  draft: (request: string, previous?: { draft: SkillDraft; feedback: string }) =>
+    http.post<{ draft: SkillDraft; problem: string | null; clash: string | null; model: string; tools: string[] }>("/api/skills/draft", { request, previous }),
+  saveSelfMade: (draft: SkillDraft) => http.post<{ success: boolean; name: string; updated: boolean }>("/api/skills/self-made", { draft }),
 };
 
 export type { ChatMessage };
