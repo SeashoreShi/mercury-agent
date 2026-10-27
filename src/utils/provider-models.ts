@@ -289,12 +289,18 @@ function chooseRecommendedModel(
   return models[0];
 }
 
+/** Models that can't hold a conversation (rerankers, embedders, speech, images, moderation). */
+const NON_CHAT = /(^|[-_/.:])(rerank(er)?|embed(ding)?s?|whisper|tts|transcribe|moderation|dall-e|image-gen|text-to-speech|speech)([-_/.:]|$)/i;
+export function isChatModelId(id: string): boolean {
+  return !NON_CHAT.test(id);
+}
+
 export function buildModelCatalog(
   provider: ProviderName,
   models: string[],
   currentModel?: string,
 ): ProviderModelCatalog {
-  const filtered = uniq(models);
+  const filtered = uniq(models).filter(isChatModelId);
   if (filtered.length === 0) {
     throw new ProviderModelFetchError('Mercury could not find any supported chat models for this provider.');
   }
@@ -553,7 +559,7 @@ async function fetchMercuryCloudModels(config: ProviderConfig): Promise<Provider
   const allModels = Array.isArray(data.data) ? data.data : [];
   const allowed = allModels.filter((m) => m.available === true).map((m) => m.id);
   const ids = allowed.length > 0 ? allowed : allModels.map((m) => m.id);
-  const models = uniq(ids);
+  const models = uniq(ids).filter(isChatModelId);
   return {
     recommendedModel: config.model && models.includes(config.model) ? config.model : models[0] || config.model || 'mercury-mini',
     models: limitModels(models.filter((model) => model !== config.model)),

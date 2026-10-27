@@ -12,7 +12,7 @@ function maskApiKey(key: string): string {
  * Surfaced as a badge in the UI. One name rather than a list, so the claim
  * stays reviewable and reverting it is a one-line change.
  */
-const RECOMMENDED_PROVIDER = 'aimlapi';
+const RECOMMENDED_PROVIDER = 'mercuryCloud';
 
 const NAMES = Object.keys(PROVIDER_META) as ProviderName[];
 

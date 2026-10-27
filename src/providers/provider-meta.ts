@@ -25,8 +25,9 @@ export interface ProviderMeta {
 }
 
 export const PROVIDER_META: Record<ProviderName, ProviderMeta> = {
+  // First on purpose: the recommended quick start, listed above everything else.
+  mercuryCloud: { label: 'Mercury Cloud', kind: 'account', blurb: 'The quick start: sign in and chat. No API keys; models from every major lab on one account.', needsKey: false, needsBaseUrl: false, signInOnly: true },
   aimlapi: { label: 'AI/ML API', kind: 'gateway', blurb: '350+ models from every major lab on one key.', needsKey: true, needsBaseUrl: false, keyUrl: 'https://aimlapi.com/app/keys' },
-  mercuryCloud: { label: 'Mercury Cloud', kind: 'account', blurb: 'Hosted by Cosmic Stack. No keys; sign in with your Mercury account.', needsKey: false, needsBaseUrl: false, signInOnly: true },
   openai: { label: 'OpenAI', kind: 'cloud', blurb: 'GPT models. The same key powers voice and voice notes.', needsKey: true, needsBaseUrl: false, keyUrl: 'https://platform.openai.com/api-keys', keyHint: 'sk-…' },
   anthropic: { label: 'Anthropic', kind: 'cloud', blurb: 'Claude models.', needsKey: true, needsBaseUrl: false, keyUrl: 'https://console.anthropic.com/settings/keys', keyHint: 'sk-ant-…' },
   deepseek: { label: 'DeepSeek', kind: 'cloud', blurb: 'DeepSeek chat and reasoning models.', needsKey: true, needsBaseUrl: false, keyUrl: 'https://platform.deepseek.com/api_keys', keyHint: 'sk-…' },

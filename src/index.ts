@@ -187,8 +187,8 @@ function maskKey(key: string): string {
 }
 
 const PROVIDER_OPTIONS: Array<{ key: ProviderName; label: string }> = [
-  { key: 'aimlapi', label: 'AI/ML API (recommended — 350+ models on one key)' },
-  { key: 'mercuryCloud', label: 'Mercury Cloud (hosted — no API keys needed)' },
+  { key: 'mercuryCloud', label: 'Mercury Cloud (recommended — quick start, no API keys)' },
+  { key: 'aimlapi', label: 'AI/ML API (350+ models on one key)' },
   { key: 'deepseek', label: 'DeepSeek' },
   { key: 'openai', label: 'OpenAI' },
   { key: 'anthropic', label: 'Anthropic' },
