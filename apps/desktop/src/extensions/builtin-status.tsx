@@ -1,10 +1,11 @@
 import { forwardRef, useEffect, useState, type ComponentPropsWithoutRef } from "react";
-import { Bot, CalendarClock, Code2, Coins, Cpu, Layers, Server, Shield, ShieldCheck } from "lucide-react";
+import { Bot, CalendarClock, Code2, Coins, Cpu, Layers, Server, Shield, ShieldCheck, Trash2 } from "lucide-react";
 import { cx } from "~/lib/cx";
 import * as api from "~/api/mercury";
 import type { ChatSettings, CodeStatus } from "~/api/types";
 import { useBots, useRuntimeState, useUi } from "~/app/store";
-import { usePulse } from "~/app/pulse";
+import { refreshPulse, usePulse, type ScheduleInfo } from "~/app/pulse";
+import { http } from "~/api/client";
 import { useConnections } from "~/shell/connections";
 import { StateOrb, LABELS } from "~/components/indicators/StateOrb";
 import { StatusButton, StatusPopover } from "~/layout/StatusBar";
@@ -121,11 +122,52 @@ function Schedules() {
     }>
       <PanelTitle>Schedules · {schedules.length}</PanelTitle>
       {schedules.length === 0 && <p className="text-sm text-ink3">Nothing scheduled.</p>}
-      {schedules.map((s) => (
-        <Line key={s.id} icon={<CalendarClock size={13} />} title={s.description || s.id}
-          detail={[s.cron ? cronLabel(s.cron) : s.delaySeconds ? `in ${s.delaySeconds}s` : "", s.botId ? `bot ${s.botId}` : "", s.nextRun ? `next ${new Date(s.nextRun).toLocaleString([], { hour: "numeric", minute: "2-digit", month: "short", day: "numeric" })}` : ""].filter(Boolean).join(" · ")} />
-      ))}
+      {schedules.map((s) => <ScheduleRow key={s.id} s={s} />)}
     </StatusPopover>
+  );
+}
+
+/** One schedule, with delete: click the bin, then "Delete?" within a few seconds to confirm. */
+function ScheduleRow({ s }: { s: ScheduleInfo }) {
+  const [armed, setArmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), 4000);
+    return () => clearTimeout(t);
+  }, [armed]);
+  async function remove() {
+    setBusy(true);
+    setError(null);
+    try {
+      await http.delete(`/api/schedules/${encodeURIComponent(s.id)}`);
+      await refreshPulse.schedules();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+      setArmed(false);
+    }
+  }
+  const detail = [s.cron ? cronLabel(s.cron) : s.delaySeconds ? `in ${s.delaySeconds}s` : "", s.botId ? `bot ${s.botId}` : "", s.nextRun ? `next ${new Date(s.nextRun).toLocaleString([], { hour: "numeric", minute: "2-digit", month: "short", day: "numeric" })}` : ""].filter(Boolean).join(" · ");
+  return (
+    <div className={cx("group flex items-start gap-2 rounded-md px-1 py-1.5", busy && "opacity-50")}>
+      <span className="mt-0.5 text-ink3"><CalendarClock size={13} /></span>
+      <span className="min-w-0 flex-1">
+        <span className="line-clamp-2 text-sm text-ink">{s.description || s.id}</span>
+        {detail && <span className="block truncate text-xs text-ink4">{detail}</span>}
+        {error && <span className="block text-xs text-red">{error}</span>}
+      </span>
+      {armed ? (
+        <button onClick={() => void remove()} disabled={busy} className="shrink-0 rounded-md bg-red/10 px-2 py-0.5 text-xs font-medium text-red hover:bg-red/15" aria-label={`Confirm deleting ${s.description || s.id}`}>
+          {busy ? "Deleting…" : "Delete?"}
+        </button>
+      ) : (
+        <button onClick={() => setArmed(true)} className="shrink-0 rounded-md p-1 text-ink4 opacity-0 transition-opacity hover:bg-ink/[0.06] hover:text-red focus-visible:opacity-100 group-hover:opacity-100" aria-label={`Delete ${s.description || s.id}`} title="Delete">
+          <Trash2 size={13} />
+        </button>
+      )}
+    </div>
   );
 }
 
