@@ -1,4 +1,4 @@
-import { Activity, Info, PanelBottom, Palette, Power, Server, Smartphone, UserRound } from "lucide-react";
+import { Activity, Boxes, Info, Mic, PanelBottom, Palette, Power, Server, Smartphone, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cx } from "~/lib/cx";
 import * as api from "~/api/mercury";
@@ -14,16 +14,20 @@ import { AddRemote } from "~/shell/AddRemote";
 import { StateOrb } from "~/components/indicators/StateOrb";
 import { Analytics } from "./Analytics";
 import { Profile } from "./Profile";
+import { ModelsSettings } from "./Models";
+import { VoiceSettings } from "./Voice";
 import { isVisible, orderedIds, useContributions, type ContributionArea } from "~/extensions/registry";
 
 /**
  * Settings: a section list on the left, one section on the right. Most-used
  * first (Appearance), plain labels, every control explains itself in one line.
  */
-type Section = "profile" | "appearance" | "statusbar" | "analytics" | "connections" | "devices" | "startup" | "about";
+type Section = "profile" | "models" | "voice" | "appearance" | "statusbar" | "analytics" | "connections" | "devices" | "startup" | "about";
 
 const SECTIONS: Array<{ id: Section; label: string; icon: typeof Palette }> = [
   { id: "profile", label: "Profile", icon: UserRound },
+  { id: "models", label: "Models", icon: Boxes },
+  { id: "voice", label: "Voice", icon: Mic },
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "statusbar", label: "Status bar", icon: PanelBottom },
   { id: "analytics", label: "Analytics", icon: Activity },
@@ -55,6 +59,8 @@ export function SettingsView({ connection, health, onSwitchConnection }: { conne
         <div className={cx("mx-auto flex flex-col gap-6 px-8 py-8", section === "analytics" ? "max-w-[960px]" : "max-w-[680px]")}>
           <h1 className="text-xl font-semibold tracking-tight text-ink">{SECTIONS.find((s) => s.id === section)?.label}</h1>
           {section === "profile" && <Profile />}
+          {section === "models" && <ModelsSettings />}
+          {section === "voice" && <VoiceSettings onOpenModels={() => setSection("models")} />}
           {section === "appearance" && <Appearance />}
           {section === "statusbar" && <StatusBarSettings />}
           {section === "analytics" && <Analytics />}

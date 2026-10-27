@@ -3,6 +3,7 @@ import { TooltipProvider } from "~/components/ui/Tooltip";
 import { useConnections, type Connection } from "~/shell/connections";
 import { useRuntime } from "~/shell/useRuntime";
 import { Onboarding } from "~/shell/Onboarding";
+import { FirstModel } from "~/shell/FirstModel";
 import { Workspace } from "~/layout/Workspace";
 import { Wordmark } from "~/components/Logo";
 import { Button } from "~/components/ui/Button";
@@ -13,7 +14,8 @@ import { useRuntimeState } from "./store";
 /**
  * What fills the window:
  *  - no connection chosen → first run;
- *  - a connection → bring it up, then the workspace.
+ *  - a connection → bring it up, then the workspace;
+ *  - a fresh Mercury with no model yet → connect one first.
  */
 export function App() {
   return (
@@ -46,6 +48,7 @@ function Connected({ connection, onSwitch }: { connection: Connection; onSwitch:
 
   useEffect(() => { setConnected(status.phase === "ready"); }, [status.phase, setConnected]);
 
+  if (status.phase === "ready" && status.health.setupRequired) return <FirstModel onReady={retry} onSwitch={onSwitch} />;
   if (status.phase === "ready") return <Workspace connection={connection} health={status.health} onSwitchConnection={onSwitch} />;
 
   return (

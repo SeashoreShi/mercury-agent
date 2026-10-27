@@ -8,6 +8,8 @@ export interface HealthInfo {
   features?: string[];
   state: string;
   booting: boolean;
+  /** No model provider yet: the runtime is up only so one can be connected (first run). */
+  setupRequired?: boolean;
 }
 
 export interface DeviceSummary {

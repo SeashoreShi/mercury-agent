@@ -38,7 +38,7 @@ export function normalizeBaseUrl(raw: string): string {
 }
 
 export class ApiError extends Error {
-  constructor(message: string, public readonly status: number, public readonly retryAfterSeconds: number | null = null) {
+  constructor(message: string, public readonly status: number, public readonly retryAfterSeconds: number | null = null, public readonly data: Record<string, unknown> = {}) {
     super(message);
     this.name = "ApiError";
   }
@@ -59,9 +59,9 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
     throw new ApiError("Unauthorized", 401);
   }
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    const body = (await res.json().catch(() => ({}))) as { error?: string } & Record<string, unknown>;
     const retry = res.headers.get("Retry-After");
-    throw new ApiError(body.error || `Request failed (${res.status})`, res.status, retry ? Number(retry) : null);
+    throw new ApiError(body.error || `Request failed (${res.status})`, res.status, retry ? Number(retry) : null, body);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
