@@ -25,7 +25,7 @@ export function People({ initialId }: { initialId?: string | null }) {
 
   const load = useCallback(async () => {
     setError(null);
-    try { setPeople((await brain.persons({ limit: 300 })).persons); } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    try { setPeople((await brain.persons({ limit: 2000 })).persons); } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   }, []);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (initialId) setSelected(initialId); }, [initialId]);

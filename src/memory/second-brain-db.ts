@@ -1027,7 +1027,7 @@ export class SecondBrainDB {
   }
 
   listPersons(userKey: string, query?: string, limit: number = 100): PersonListRow[] {
-    const cappedLimit = Math.min(Math.max(limit, 1), 300);
+    const cappedLimit = Math.min(Math.max(limit, 1), 5000);
     // Counts both the legacy archive and live beliefs; owner-edited people
     // stay listed even with nothing linked yet.
     const q = query && query.trim() ? `%${query.trim().toLowerCase()}%` : null;
@@ -1058,10 +1058,19 @@ export class SecondBrainDB {
   }
 
   /** Live beliefs that mention a person, newest first. */
-  getBeliefIdsForPerson(personId: string, limit: number = 50): string[] {
+  getBeliefIdsForPerson(personId: string, limit: number = 50, offset = 0): string[] {
     return (this.db.prepare(`SELECT bp.belief_id AS id FROM belief_persons bp JOIN beliefs b ON b.id = bp.belief_id
-      WHERE bp.person_id = ? AND b.status IN ('candidate','held','confirmed','contested') ORDER BY b.updated_at DESC LIMIT ?`)
-      .all(personId, Math.max(1, Math.min(limit, 200))) as Array<{ id: string }>).map((r) => r.id);
+      WHERE bp.person_id = ? AND b.status IN ('candidate','held','confirmed','contested') ORDER BY b.updated_at DESC LIMIT ? OFFSET ?`)
+      .all(personId, Math.max(1, limit), Math.max(0, offset)) as Array<{ id: string }>).map((r) => r.id);
+  }
+
+  /** How many live beliefs and legacy memories mention a person (for paging). */
+  countPersonMemories(userKey: string, personId: string): { beliefs: number; memories: number } {
+    const beliefs = (this.db.prepare(`SELECT COUNT(*) AS n FROM belief_persons bp JOIN beliefs b ON b.id = bp.belief_id
+      WHERE bp.person_id = ? AND b.status IN ('candidate','held','confirmed','contested')`).get(personId) as { n: number }).n;
+    const memories = (this.db.prepare(`SELECT COUNT(*) AS n FROM memory_persons mp JOIN memories m ON m.id = mp.memory_id
+      WHERE mp.person_id = ? AND m.user_key = ? AND m.dismissed = 0`).get(personId, userKey) as { n: number }).n;
+    return { beliefs, memories };
   }
 
   getPersonConnections(userKey: string, personId: string, limit: number = 30): PersonConnectionRow[] {
@@ -1081,17 +1090,16 @@ export class SecondBrainDB {
     return stmt.all(userKey, personId, cappedLimit) as PersonConnectionRow[];
   }
 
-  getMemoriesForPerson(userKey: string, personId: string, limit: number = 50): MemoryRow[] {
-    const cappedLimit = Math.min(Math.max(limit, 1), 200);
+  getMemoriesForPerson(userKey: string, personId: string, limit: number = 50, offset = 0): MemoryRow[] {
     const stmt = this.db.prepare(`
       SELECT m.*
       FROM memory_persons mp
       JOIN memories m ON m.id = mp.memory_id
       WHERE mp.person_id = ? AND m.user_key = ? AND m.dismissed = 0
       ORDER BY m.updated_at DESC
-      LIMIT ?
+      LIMIT ? OFFSET ?
     `);
-    return stmt.all(personId, userKey, cappedLimit) as MemoryRow[];
+    return stmt.all(personId, userKey, Math.max(1, limit), Math.max(0, offset)) as MemoryRow[];
   }
 
   getRelationshipMemoryRows(userKey: string): MemoryRow[] {

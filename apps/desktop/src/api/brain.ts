@@ -105,7 +105,9 @@ export const brain = {
     return http.get<{ persons: BrainPerson[] }>(`/api/brain/persons?${qs}`);
   },
   person: (id: string) => http.get<{ person: BrainPerson }>(`/api/brain/persons/${encodeURIComponent(id)}`),
-  personMemories: (id: string) => http.get<{ memories: BrainMemory[] }>(`/api/brain/persons/${encodeURIComponent(id)}/memories?limit=60`),
+  /** Paged; `total` is everything that mentions them (no upper bound). */
+  personMemories: (id: string, offset = 0, limit = 50) =>
+    http.get<{ memories: BrainMemory[]; total?: number }>(`/api/brain/persons/${encodeURIComponent(id)}/memories?limit=${limit}&offset=${offset}`),
   /** A one-to-one relation someone else holds fails with 409 ("Heer is already your wife."); `force` moves it. */
   updatePerson: (id: string, patch: { name?: string; relationship?: string | null; summary?: string | null; kind?: string; meta?: PersonMeta; force?: boolean }) =>
     http.patch<{ person?: BrainPerson; removed?: boolean }>(`/api/brain/persons/${encodeURIComponent(id)}`, patch),
@@ -117,5 +119,5 @@ export const brain = {
   queueExisting: () => http.post<{ queued: number; status: CheckStatus | null }>("/api/brain/persons/checks/queue-existing"),
 
   graph: (memories = 300, shadows = false) => http.get<BrainGraphData>(`/api/brain/graph/v2?memories=${memories}${shadows ? "&shadows=1" : ""}`),
-  relations: () => http.get<{ relations: Array<{ label: string; cardinality: "one" | "many" }>; knownCap: number }>("/api/brain/relations"),
+  relations: () => http.get<{ relations: Array<{ label: string; cardinality: "one" | "many" }> }>("/api/brain/relations"),
 };

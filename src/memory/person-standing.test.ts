@@ -32,11 +32,16 @@ describe('person standing', () => {
     expect(s({ mentions: 9, relationship: 'friend', verifiedBy: 'model-rejected' }).score).toBe(0);
   });
 
-  it('caps the known list, weakest first, never the owner-confirmed', () => {
-    const people = Array.from({ length: 5 }, (_, i) => ({ id: `p${i}`, ownerEdited: i === 0, standing: { score: 60 + i, tier: 'known' as const, reasons: [] } }));
-    people[0].standing = { score: 100, tier: 'known', reasons: [] };
+  it('soft-caps the known list: strong ties stay, weak ones fade, owner-confirmed never move', () => {
+    const scores = [100, 90, 60, 58, 72];
+    const people = scores.map((score, i) => ({ id: `p${i}`, ownerEdited: i === 0, standing: { score, tier: 'known' as const, reasons: [] as string[] } }));
     capKnown(people, 3);
-    expect(people.filter((p) => p.standing.tier === 'known').map((p) => p.id).sort()).toEqual(['p0', 'p3', 'p4']);
+    // Room for two besides the owner (p1 90, p4 72); past it the bar is 70, so p2 (60) and p3 (58) fade.
+    expect(people.filter((p) => p.standing.tier === 'known').map((p) => p.id).sort()).toEqual(['p0', 'p1', 'p4']);
+    const strong = Array.from({ length: 6 }, (_, i) => ({ id: `s${i}`, ownerEdited: false, standing: { score: 95, tier: 'known' as const, reasons: [] as string[] } }));
+    capKnown(strong, 3);
+    expect(strong.every((p) => p.standing.tier === 'known')).toBe(true);
+    expect(people.flatMap((p) => p.standing.reasons).join(' ')).not.toMatch(/limit|cap/);
   });
 });
 

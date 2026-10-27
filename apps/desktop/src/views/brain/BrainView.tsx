@@ -27,7 +27,7 @@ export function BrainView() {
 
   useEffect(() => { try { sessionStorage.setItem(TAB_KEY, tab); } catch { /* ignore */ } }, [tab]);
   useEffect(() => { if (visible) setOpened((o) => (o[tab] ? o : { ...o, [tab]: true })); }, [visible, tab]);
-  const loadPeople = useCallback(() => { void brain.persons({ limit: 300 }).then((r) => setPeople(r.persons)).catch(() => {}); }, []);
+  const loadPeople = useCallback(() => { void brain.persons({ limit: 2000 }).then((r) => setPeople(r.persons)).catch(() => {}); }, []);
   useEffect(() => { if (visible && selected && selected.kind !== "memory" && people.length === 0) loadPeople(); }, [visible, selected, people.length, loadPeople]);
 
   return (

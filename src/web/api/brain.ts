@@ -3,7 +3,7 @@ import type { PersonVerifier } from '../../memory/person-verifier.js';
 import { loadConfig, getMemoryDir, saveConfig } from '../../utils/config.js';
 import { isBetterSqlite3Available } from '../../memory/second-brain-db.js';
 import { UserMemoryStore } from '../../memory/user-memory.js';
-import { cardinalityOf, exclusiveGroup, KNOWN_CAP, relationCatalog } from '../../memory/person-standing.js';
+import { cardinalityOf, exclusiveGroup, relationCatalog } from '../../memory/person-standing.js';
 import type { Belief, BeliefKind, BeliefStatus, BeliefStore, Evidence } from '../../memory/beliefs.js';
 import { join } from 'node:path';
 
@@ -218,7 +218,7 @@ brain.get('/api/brain/persons', async (c) => {
   const mem = ensureMemory();
   if (!mem) return c.json({ persons: [], total: 0, available: false, error: SQLITE_DEPENDENCY_ERROR }, 503);
   const q = c.req.query('q') || '';
-  const limit = Math.min(parseInt(c.req.query('limit') || '100'), 200);
+  const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '100', 10) || 100, 1), 5000);
   const kinds = (c.req.query('kind') || '').split(',').map((k) => k.trim()).filter(Boolean);
   const showRejected = c.req.query('rejected') === '1';
   const tierParam = c.req.query('tier');
@@ -251,7 +251,7 @@ function cleanMeta(input: unknown): Record<string, unknown> | undefined {
 }
 
 /** Relationship words with their cardinality, for the edit form. */
-brain.get('/api/brain/relations', (c) => c.json({ relations: relationCatalog(), knownCap: KNOWN_CAP }));
+brain.get('/api/brain/relations', (c) => c.json({ relations: relationCatalog() }));
 
 brain.get('/api/brain/persons/checks', (c) => {
   const status = personVerifier?.status();
@@ -337,9 +337,11 @@ brain.get('/api/brain/persons/:id/memories', async (c) => {
   const mem = ensureMemory();
   if (!mem) return c.json({ memories: [], total: 0, available: false, error: SQLITE_DEPENDENCY_ERROR }, 503);
   const id = c.req.param('id');
-  const limit = Math.min(parseInt(c.req.query('limit') || '50'), 100);
-  const memories = mem.getPersonMemories(id, limit);
-  return c.json({ memories: memories.map(memToJson), total: memories.length, available: true });
+  // Paged, not capped: a person can have any number of memories.
+  const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50', 10) || 50, 1), 500);
+  const offset = Math.max(parseInt(c.req.query('offset') || '0', 10) || 0, 0);
+  const page = mem.personMemoryPage(id, limit, offset);
+  return c.json({ memories: page.records.map(memToJson), total: page.total, limit, offset, available: true });
 });
 
 brain.get('/api/brain/graph', async (c) => {

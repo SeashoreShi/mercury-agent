@@ -59,6 +59,20 @@ describe.skipIf(!sqliteAvailable)('people curation', () => {
     expect(store.getPersonMemories(zayd.id, 10).length).toBe(2);
   });
 
+  it('a person\'s memories page with no upper bound', () => {
+    const store = createStore();
+    // Unrelated words per memory so none of them merge as duplicates.
+    let seed = 7;
+    const word = () => Array.from({ length: 7 }, () => String.fromCharCode(97 + ((seed = (seed * 48271) % 2147483647) % 26))).join('');
+    for (let i = 0; i < 130; i++) remember(store, `My wife Heer ${word()} ${word()} ${word()} ${word()} ${word()} ${word()}.`);
+    const heer = byName(store, 'Heer')!;
+    const first = store.personMemoryPage(heer.id, 50, 0);
+    expect(first.total).toBe(130);
+    const seen = new Set(first.records.map((r) => r.id));
+    for (let offset = 50; offset < 130; offset += 50) for (const r of store.personMemoryPage(heer.id, 50, offset).records) seen.add(r.id);
+    expect(seen.size).toBe(130);
+  });
+
   it('merging moves memories to one id, and the old name keeps resolving to it', () => {
     const store = createStore();
     remember(store, 'My wife Heer likes hiking.');

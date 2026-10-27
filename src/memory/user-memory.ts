@@ -223,12 +223,12 @@ export class UserMemoryStore {
   listPersons(query?: string, limit: number = 100, tier?: PersonTier): UserPersonRecord[] {
     this.indexNewBeliefs();
     const standings = this.standings();
-    const rows = this.db.listPersons(this.userKey, query, 300);
+    const rows = this.db.listPersons(this.userKey, query, 5000);
     return rows
       .map((row) => ({ ...this.toPersonRecord(row), standing: standings.get(row.id) }))
       .filter((p) => !tier || p.standing?.tier === tier)
       .sort((a, b) => (b.standing?.score ?? 0) - (a.standing?.score ?? 0) || b.memoryCount - a.memoryCount)
-      .slice(0, Math.max(1, Math.min(limit, 300)));
+      .slice(0, Math.max(1, limit));
   }
 
   getPerson(personId: string): UserPersonRecord | null {
@@ -316,15 +316,29 @@ export class UserMemoryStore {
     this.db.applyPersonCheck(this.userKey, personId, verdict);
   }
 
-  getPersonMemories(personId: string, limit: number = 50): UserMemoryRecord[] {
-    this.indexNewBeliefs();
-    const live = this.db.getBeliefIdsForPerson(personId, limit)
-      .map((id) => this.beliefs.get(id))
-      .filter((b): b is NonNullable<typeof b> => Boolean(b))
-      .map((b) => this.toBeliefRecord(b));
-    const legacy = this.db.getMemoriesForPerson(this.userKey, personId, limit).map(row => this.toRecord(row));
-    return [...live, ...legacy].slice(0, limit);
+  /** Everything about a person, live beliefs first then the legacy archive, one page at a time. No upper bound. */
+  getPersonMemories(personId: string, limit: number = 50, offset = 0): UserMemoryRecord[] {
+    return this.personMemoryPage(personId, limit, offset).records;
   }
+
+  personMemoryPage(personId: string, limit: number = 50, offset = 0): { records: UserMemoryRecord[]; total: number } {
+    this.indexNewBeliefs();
+    const counts = this.db.countPersonMemories(this.userKey, personId);
+    const take = Math.max(1, limit);
+    const from = Math.max(0, offset);
+    const live = from < counts.beliefs
+      ? this.db.getBeliefIdsForPerson(personId, take, from)
+        .map((id) => this.beliefs.get(id))
+        .filter((b): b is NonNullable<typeof b> => Boolean(b))
+        .map((b) => this.toBeliefRecord(b))
+      : [];
+    const rest = take - live.length;
+    const legacy = rest > 0
+      ? this.db.getMemoriesForPerson(this.userKey, personId, rest, Math.max(0, from - counts.beliefs)).map(row => this.toRecord(row))
+      : [];
+    return { records: [...live, ...legacy], total: counts.beliefs + counts.memories };
+  }
+
 
   /** True while persons are rebuilt from old memories: those never queue model checks. */
   private rebuilding = false;
@@ -610,7 +624,7 @@ export class UserMemoryStore {
       for (const name of extractHumanNames(text, b.kind === 'relationship')) link(name, b.kind === 'relationship' ? 'known' : null, 'mention');
     }
     // Known people mentioned by name or alias.
-    for (const person of this.db.listPersons(this.userKey, '', 300)) {
+    for (const person of this.db.listPersons(this.userKey, '', 5000)) {
       if (seen.has(person.id)) continue;
       if (mentionsPerson(text, person.display_name) || mentionsPerson(text, person.canonical_name)) {
         seen.add(person.id);

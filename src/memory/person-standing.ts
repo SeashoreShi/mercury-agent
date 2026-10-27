@@ -14,8 +14,10 @@
  *           arrives or you confirm them.
  *   faint   one stray mention; listed only under "All".
  *
- * The number of known people is capped (KNOWN_CAP); past it, the lowest
- * scores fall back to shadow. Owner decisions always win.
+ * The known list has a soft cap (KNOWN_CAP, about Dunbar's number). It is
+ * internal and never shown: past it the bar to stay known rises with each
+ * extra person, so a big social life still fits while weak names fade to
+ * shadow. Owner decisions always win.
  */
 
 export type PersonTier = 'known' | 'shadow' | 'faint';
@@ -43,7 +45,7 @@ export interface PersonStanding {
   reasons: string[];
 }
 
-/** Most people keep about 150 stable relationships (Dunbar); past that the brain shows the strongest. */
+/** Most people keep about 150 stable relationships (Dunbar). A soft cap, internal only. */
 export const KNOWN_CAP = 150;
 export const KNOWN_MIN_SCORE = 55;
 export const SHADOW_MIN_SCORE = 25;
@@ -79,12 +81,22 @@ export function standingOf(e: PersonEvidence): PersonStanding {
   return { score, tier: 'faint', reasons: reasons.length ? reasons : ['seen once'] };
 }
 
-/** Apply the cap: past KNOWN_CAP known people, the weakest become shadows. Owner-confirmed people never move. */
-export function capKnown<T extends { standing: PersonStanding; ownerEdited: boolean }>(people: T[], cap = KNOWN_CAP): T[] {
+/**
+ * The soft cap. Up to `cap` known people, nothing changes. Past it, each
+ * extra place needs a higher score (+1 per `step` people beyond the cap, on
+ * top of a margin), so the list keeps growing for strong ties and stops
+ * growing for weak ones. Owner-confirmed people never move. Nothing here is
+ * worded for the user: someone past the bar simply needs more evidence.
+ */
+export function capKnown<T extends { standing: PersonStanding; ownerEdited: boolean }>(people: T[], cap = KNOWN_CAP, step = 10): T[] {
   const known = people.filter((p) => p.standing.tier === 'known' && !p.ownerEdited).sort((a, b) => b.standing.score - a.standing.score);
   const owner = people.filter((p) => p.standing.tier === 'known' && p.ownerEdited).length;
   const room = Math.max(0, cap - owner);
-  for (const p of known.slice(room)) p.standing = { ...p.standing, tier: 'shadow', reasons: [...p.standing.reasons, 'past the limit of people shown'] };
+  known.forEach((p, i) => {
+    if (i < room) return;
+    const bar = KNOWN_MIN_SCORE + 15 + Math.floor((i - room) / step);
+    if (p.standing.score < bar) p.standing = { ...p.standing, tier: 'shadow', reasons: [...p.standing.reasons, 'needs more evidence'] };
+  });
   return people;
 }
 

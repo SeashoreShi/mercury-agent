@@ -17,6 +17,8 @@ import { cx } from "~/lib/cx";
 export function PersonCard({ id, onClose, onChanged, allPeople }: { id: string; onClose?: () => void; onChanged: () => void; allPeople: BrainPerson[] }) {
   const [person, setPerson] = useState<BrainPerson | null>(null);
   const [memories, setMemories] = useState<BrainMemory[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [more, setMore] = useState(false);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,11 +28,26 @@ export function PersonCard({ id, onClose, onChanged, allPeople }: { id: string; 
       const [p, m] = await Promise.all([brain.person(id), brain.personMemories(id)]);
       setPerson(p.person);
       setMemories(m.memories);
+      setTotal(m.total ?? m.memories.length);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   }
-  useEffect(() => { setPerson(null); setMemories(null); setEditing(false); void load(); }, [id]);
+  useEffect(() => { setPerson(null); setMemories(null); setTotal(0); setEditing(false); void load(); }, [id]);
+
+  async function loadMore() {
+    if (!memories) return;
+    setMore(true);
+    try {
+      const m = await brain.personMemories(id, memories.length);
+      setMemories([...memories, ...m.memories]);
+      setTotal(m.total ?? total);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMore(false);
+    }
+  }
 
   if (error) return <div className="p-5 text-sm text-red">{error}</div>;
   if (!person) return <div className="p-5 text-ink3"><Spinner size={16} /></div>;
@@ -71,16 +88,19 @@ export function PersonCard({ id, onClose, onChanged, allPeople }: { id: string; 
       )}
 
       <div>
-        <div className="mb-2 text-2xs font-medium uppercase tracking-wider text-ink4">Memories with {person.name.split(" ")[0]}</div>
+        <div className="mb-2 text-2xs font-medium uppercase tracking-wider text-ink4">Memories with {person.name.split(" ")[0]}{total > 0 && <span className="ml-1.5 normal-case tracking-normal">· {total}</span>}</div>
         {memories === null && <Spinner size={14} className="text-ink3" />}
         {memories && memories.length === 0 && <p className="text-sm text-ink4">None yet.</p>}
         <div className="flex flex-col gap-1.5">
-          {memories?.slice(0, 30).map((m) => (
+          {memories?.map((m) => (
             <div key={m.id} className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink2">
               <span className="mr-2 font-mono text-2xs uppercase text-ink4">{m.type}</span>{m.summary}
             </div>
           ))}
         </div>
+        {memories && memories.length < total && (
+          <Button className="mt-2" size="sm" variant="ghost" loading={more} onClick={() => void loadMore()}>Show more ({total - memories.length})</Button>
+        )}
       </div>
     </div>
   );
