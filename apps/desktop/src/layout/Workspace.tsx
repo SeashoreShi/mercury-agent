@@ -17,6 +17,7 @@ import { PluginsView } from "~/views/plugins/PluginsView";
 import { SkillsView } from "~/views/skills/SkillsView";
 import { SettingsView } from "~/views/settings/SettingsView";
 import { BrainView } from "~/views/brain/BrainView";
+import { ArtifactsView } from "~/views/artifacts/ArtifactsView";
 import { ErrorBoundary } from "~/components/ErrorBoundary";
 import { CloudBanner } from "~/views/settings/Cloud";
 import { CallLayer } from "~/views/call/Call";
@@ -51,6 +52,7 @@ export function Workspace({ connection, health, onSwitchConnection }: { connecti
         <main className="relative flex min-w-0 flex-1 flex-col">
           {/* Each view behind its own crash boundary: one broken view never blanks the window. */}
           <Pane active={view === "chat"}><ErrorBoundary label="Chat"><ChatView /></ErrorBoundary></Pane>
+          <Pane active={view === "artifacts"}><ErrorBoundary label="Artifacts"><ArtifactsView /></ErrorBoundary></Pane>
           <Pane active={view === "code"}><ErrorBoundary label="Mercury Code"><CodeView /></ErrorBoundary></Pane>
           <Pane active={view === "bots"}><ErrorBoundary label="Bots"><BotsView /></ErrorBoundary></Pane>
           <Pane active={view === "brain"}><ErrorBoundary label="Brain"><BrainView /></ErrorBoundary></Pane>

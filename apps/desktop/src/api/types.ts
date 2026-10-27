@@ -57,6 +57,8 @@ export interface ChatMessage {
   trace?: ThoughtTrace;
   /** You stopped this turn; content is whatever was written before that. */
   stopped?: boolean;
+  /** Files this turn made that are worth keeping (images, PDFs, reports…). */
+  artifacts?: import("./artifacts").ArtifactRef[];
 }
 
 export interface ThoughtStep {

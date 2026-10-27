@@ -21,6 +21,7 @@
     "autostart:default",
     "deep-link:default",
     "opener:default",
+    "opener:allow-reveal-item-in-dir",
     "os:default",
     "os:allow-hostname",
     "process:default",

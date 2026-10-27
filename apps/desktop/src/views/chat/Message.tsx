@@ -11,6 +11,7 @@ import { cx } from "~/lib/cx";
 import { isStopNote } from "~/app/events";
 import { UserAvatar, useDisplayName } from "~/components/UserAvatar";
 import { usePulse } from "~/app/pulse";
+import { ArtifactStrip } from "~/components/artifacts/ArtifactCard";
 
 /**
  * One entry in a conversation. Each kind the runtime stores gets its own
@@ -67,6 +68,7 @@ export const Message = memo(function Message({ message }: { message: ChatMessage
         )}
         {body && <Markdown text={body} />}
         {stopped && <StoppedMarker partial={!!body} />}
+        {message.artifacts && message.artifacts.length > 0 && <ArtifactStrip items={message.artifacts} />}
         <MessageMeta timestamp={message.timestamp} copy={body || undefined} />
       </div>
     </div>

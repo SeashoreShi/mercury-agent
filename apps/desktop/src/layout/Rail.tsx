@@ -1,4 +1,4 @@
-import { Bot, Brain, Code2, MessageSquare, Puzzle, Settings, Sparkles } from "lucide-react";
+import { Bot, Brain, Code2, MessageSquare, Puzzle, Settings, Sparkles, Layers } from "lucide-react";
 import { useEffect } from "react";
 import { cx } from "~/lib/cx";
 import { useRuntimeState, useUi, type View } from "~/app/store";
@@ -8,6 +8,7 @@ import { Tooltip } from "~/components/ui/Tooltip";
 
 const ITEMS: Array<{ view: View; label: string; icon: typeof MessageSquare; key: string }> = [
   { view: "chat", label: "Chat", icon: MessageSquare, key: "1" },
+  { view: "artifacts", label: "Artifacts", icon: Layers, key: "7" },
   { view: "code", label: "Code", icon: Code2, key: "2" },
   { view: "bots", label: "Bots", icon: Bot, key: "3" },
   { view: "brain", label: "Brain", icon: Brain, key: "4" },

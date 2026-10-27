@@ -7,7 +7,7 @@
 import { create } from "zustand";
 import type { BotStatus, ChatThread, PendingPrompt } from "~/api/types";
 
-export type View = "chat" | "code" | "bots" | "brain" | "plugins" | "skills" | "settings";
+export type View = "chat" | "artifacts" | "code" | "bots" | "brain" | "plugins" | "skills" | "settings";
 
 /** What the agent is doing right now; drives the StateOrb everywhere. */
 export type AgentState = "idle" | "thinking" | "streaming" | "working" | "needs-you" | "offline";

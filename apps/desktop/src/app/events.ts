@@ -12,6 +12,7 @@ import { http } from "~/api/client";
 import type { BotActivityEvent, ChatMessage, CodeMode, PendingPrompt } from "~/api/types";
 import { useBots, useChat, useRuntimeState, type AgentState } from "./store";
 import { conversations, useCodeSessions, type ConversationStore, type Surface } from "./conversation";
+import type { ArtifactRef } from "~/api/artifacts";
 
 export function useRuntimeEvents(enabled: boolean): void {
   const chatId = conversations.chat((s) => s.activeId);
@@ -78,7 +79,10 @@ function safeJson<T>(raw: string): T | null {
   }
 }
 
-function handleEvent(store: ConversationStore, event: string, raw: string): void {
+/** Artifacts that arrived before their reply did: attached when it lands. */
+const pendingArtifacts = new WeakMap<ConversationStore, ArtifactRef[]>();
+
+export function handleEvent(store: ConversationStore, event: string, raw: string): void {
   const conv = store.getState();
   const data = safeJson<Record<string, unknown>>(raw) ?? {};
   // A scoped stream may still carry another session's events on old runtimes.
@@ -96,6 +100,18 @@ function handleEvent(store: ConversationStore, event: string, raw: string): void
     case "plan": {
       const steps = Array.isArray(data.steps) ? (data.steps as Array<{ label: string; status: "pending" | "active" | "done" }>) : [];
       if (steps.length) conv.setPlan({ steps, updatedAt: Number(data.updatedAt) || Date.now() });
+      break;
+    }
+    case "artifacts": {
+      const items = Array.isArray(data.items) ? (data.items as ArtifactRef[]) : [];
+      if (!items.length) break;
+      const last = conv.messages[conv.messages.length - 1];
+      const turnOver = conv.agent === "idle" || conv.agent === "needs-you";
+      if (turnOver && last?.role === "assistant") {
+        conv.setMessages([...conv.messages.slice(0, -1), { ...last, artifacts: [...(last.artifacts ?? []), ...items] }]);
+      } else {
+        pendingArtifacts.set(store, [...(pendingArtifacts.get(store) ?? []), ...items]);
+      }
       break;
     }
     case "reasoning":
@@ -135,7 +151,9 @@ function handleEvent(store: ConversationStore, event: string, raw: string): void
       const trace = live && (live.reasoning || live.steps.length) ? { ...live, endedAt: Date.now(), steps: live.steps.map((st) => st.status === "running" ? { ...st, status: "done" as const, endedAt: Date.now() } : st) } : undefined;
       conv.clearStreaming();
       conv.clearLive();
-      conv.addMessage({ id: crypto.randomUUID(), role: "assistant", content: text, timestamp: new Date().toISOString(), ...(trace ? { trace } : {}) });
+      const artifacts = pendingArtifacts.get(store);
+      pendingArtifacts.delete(store);
+      conv.addMessage({ id: crypto.randomUUID(), role: "assistant", content: text, timestamp: new Date().toISOString(), ...(trace ? { trace } : {}), ...(artifacts?.length ? { artifacts } : {}) });
       conv.setStep(null);
       store.getState().setAgent(store.getState().prompts.length ? "needs-you" : "idle");
       void refreshThreads();
