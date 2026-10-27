@@ -2,7 +2,7 @@ import { PanelLeft } from "lucide-react";
 import { useEffect } from "react";
 import { useChat, useUi } from "~/app/store";
 import { conversations, ConversationContext, useCodeSessions } from "~/app/conversation";
-import { openThread } from "~/app/events";
+import { refreshThreads, openThread } from "~/app/events";
 import { Button } from "~/components/ui/Button";
 import { Tooltip } from "~/components/ui/Tooltip";
 import { Mark } from "~/components/Logo";
@@ -10,8 +10,9 @@ import { ThreadList } from "./ThreadList";
 import { Conversation } from "./Conversation";
 import { VoiceConversation } from "./VoiceConversation";
 import { OptimusFace } from "~/components/OptimusFace";
-import { useVoice, phaseOf, PHASE_LABEL } from "~/app/voice";
+import { useVoice, phaseOf, PHASE_LABEL, setOnCallTurn, useCall } from "~/app/voice";
 import { cx } from "~/lib/cx";
+import * as api from "~/api/mercury";
 
 /**
  * Chat: sessions on the left (with New chat), one conversation. Its own
@@ -32,11 +33,21 @@ export function ChatView() {
   const title = threads.find((t) => t.id === activeId)?.title || (activeId ? "Untitled" : "New chat");
   const codeSet = new Set(codeIds.map((c) => c.id));
 
-  // A voice session starting takes over: Chat opens on the live session.
-  const setView = useUi((s) => s.setView);
+  // A call is saved as a chat thread, live: show it in the list, and refresh it while it's open.
+  useEffect(() => { void refreshThreads(); }, [voice.active, voice.threadId]);
   useEffect(() => {
-    if (voice.active) { setVoiceOpen(true); setView("chat"); }
-  }, [voice.active, voice.callId, setVoiceOpen, setView]);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    setOnCallTurn((threadId) => {
+      if (!threadId || conversations.chat.getState().activeId !== threadId) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        void api.chat.thread(threadId).then((t) => {
+          if (conversations.chat.getState().activeId === threadId) conversations.chat.getState().setMessages(t.messages ?? []);
+        }).catch(() => {});
+      }, 250);
+    });
+    return () => { setOnCallTurn(null); if (timer) clearTimeout(timer); };
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -60,7 +71,12 @@ export function ChatView() {
             newLabel="New chat"
             searchLabel="Search chats"
             pinned={(voice.active || voice.turns.length > 0) && (
-              <button onClick={() => setVoiceOpen(true)}
+              <button onClick={() => {
+                  // A live call opens the call screen; a finished one opens its chat.
+                  if (voice.active) { useCall.setState({ view: "full" }); return; }
+                  if (voice.threadId) { setVoiceOpen(false); void openThread("chat", voice.threadId); return; }
+                  setVoiceOpen(true);
+                }}
                 className={cx("mb-3 flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left", voiceOpen ? "border-line-strong bg-ink/[0.07]" : "border-line bg-surface hover:border-line-strong")}>
                 <OptimusFace size={30} phase={voicePhase} />
                 <span className="min-w-0 flex-1">

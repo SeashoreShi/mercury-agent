@@ -19,6 +19,7 @@ import { SettingsView } from "~/views/settings/SettingsView";
 import { BrainView } from "~/views/brain/BrainView";
 import { ErrorBoundary } from "~/components/ErrorBoundary";
 import { CloudBanner } from "~/views/settings/Cloud";
+import { CallLayer } from "~/views/call/Call";
 
 registerBuiltinStatusItems();
 
@@ -59,6 +60,7 @@ export function Workspace({ connection, health, onSwitchConnection }: { connecti
         </main>
       </div>
       <StatusBar />
+      <CallLayer />
     </div>
   );
 }

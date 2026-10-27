@@ -1,9 +1,10 @@
-import { ArrowUp, ChevronDown, Paperclip, Shield, ShieldCheck, Square, X } from "lucide-react";
+import { ArrowUp, AudioLines, ChevronDown, Paperclip, Shield, ShieldCheck, Square, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cx } from "~/lib/cx";
 import * as api from "~/api/mercury";
 import type { ChatSettings, ModelsResponse } from "~/api/types";
 import { useRuntimeState } from "~/app/store";
+import { startCall, useVoice } from "~/app/voice";
 import { sendMessage, stopTurn, type CodeTurn } from "~/app/events";
 import { useConversation, useConversationStore, type Surface } from "~/app/conversation";
 import { Button } from "~/components/ui/Button";
@@ -70,6 +71,7 @@ export function Composer({ surface, placeholder, code, extra, blockedReason, mon
     requestAnimationFrame(() => { const el = ref.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } });
   });
   const recording = dictation.phase === "recording";
+  const voiceAvailable = useVoice((s) => s.available && s.supported && !s.active);
   // Esc throws the take away, Enter sends it, while recording.
   useEffect(() => {
     if (!recording) return;
@@ -251,7 +253,14 @@ export function Composer({ surface, placeholder, code, extra, blockedReason, mon
               <span className="mr-2 hidden text-2xs text-ink4 sm:inline">⇧↵ new line</span>
             ) : null}
             {!recording && <MicButton d={dictation} disabled={!connected} />}
-            {recording ? null : showStop ? (
+            {!recording && surface === "chat" && voiceAvailable && !text.trim() && files.length === 0 && !busy && (
+              <Tooltip label="Talk to Mercury (voice call)" side="top">
+                <Button variant="secondary" size="md" icon onClick={() => void startCall()} disabled={!connected} aria-label="Start a voice call" className="!rounded-full">
+                  <AudioLines size={17} />
+                </Button>
+              </Tooltip>
+            )}
+            {recording || (surface === "chat" && voiceAvailable && !text.trim() && files.length === 0 && !busy) ? null : showStop ? (
               <Tooltip label={stopping ? "Stopping…" : "Stop"} shortcut="esc" side="top">
                 <Button variant="primary" size="md" icon onClick={stop} disabled={stopping || !connected} aria-label="Stop" className="!rounded-full">
                   <Square size={13} className="fill-current" strokeWidth={0} />
