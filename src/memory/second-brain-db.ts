@@ -1119,6 +1119,20 @@ export class SecondBrainDB {
       .trim();
   }
 
+  /** The legacy archive as map notes (live rows only). */
+  archiveNotes(userKey: string, limit = 50000): Array<{ id: string; text: string; kind: string; at: number; confidence: number }> {
+    return this.db.prepare(`SELECT id, summary AS text, type AS kind, updated_at AS at, confidence FROM memories
+      WHERE user_key = ? AND dismissed = 0 AND superseded_by IS NULL ORDER BY updated_at DESC LIMIT ?`).all(userKey, limit) as Array<{ id: string; text: string; kind: string; at: number; confidence: number }>;
+  }
+
+  /** Changes when any live belief or archive row changes: count + newest update. */
+  knowledgeSignature(userKey: string, ownerKey: string, archive: boolean): string {
+    const b = this.db.prepare(`SELECT COUNT(*) AS n, COALESCE(MAX(updated_at), 0) AS t FROM beliefs WHERE owner_key = ? AND status IN ('candidate','held','confirmed','contested')`).get(ownerKey) as { n: number; t: number };
+    if (!archive) return `${b.n}:${b.t}`;
+    const m = this.db.prepare(`SELECT COUNT(*) AS n, COALESCE(MAX(updated_at), 0) AS t FROM memories WHERE user_key = ? AND dismissed = 0 AND superseded_by IS NULL`).get(userKey) as { n: number; t: number };
+    return `${b.n}:${b.t}|${m.n}:${m.t}`;
+  }
+
   setMeta(key: string, value: string): void {
     const stmt = this.db.prepare('INSERT OR REPLACE INTO second_brain_meta (key, value) VALUES (@key, @value)');
     stmt.run({ key, value });

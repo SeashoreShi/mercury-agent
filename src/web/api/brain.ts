@@ -315,6 +315,14 @@ brain.post('/api/brain/persons/:id/merge', async (c) => {
   return c.json({ person: into ? personToJson(into) : null });
 });
 
+/** Everything known as a mind map: themes → sub-themes → notes, with sparse "related" links. Local, no model calls. */
+brain.get('/api/brain/map', (c) => {
+  const mem = ensureMemory();
+  if (!mem) return c.json({ available: false, error: SQLITE_DEPENDENCY_ERROR }, 503);
+  const map = mem.knowledgeMap({ archive: c.req.query('archive') === '1' });
+  return c.json({ ...map, available: true });
+});
+
 /** The brain as a graph of real links: memories, people, who appears where, who relates to whom. */
 brain.get('/api/brain/graph/v2', (c) => {
   const mem = ensureMemory();

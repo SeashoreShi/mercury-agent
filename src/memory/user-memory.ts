@@ -6,6 +6,7 @@ import { looksLikeSecret } from '../learning/text.js';
 import { join } from 'node:path';
 import { copyFileSync, existsSync } from 'node:fs';
 import { logger } from '../utils/logger.js';
+import { buildKnowledgeMap, themeMemory, type KnowledgeMap, type ThemeMemory } from './knowledge-map.js';
 import { capKnown, standingOf, type PersonStanding, type PersonTier } from './person-standing.js';
 import { extractAliases, extractOwnerRelations, extractPersonLinks, isOwnerName, ownerNameSet } from './person-extract.js';
 
@@ -98,6 +99,10 @@ export interface UserPersonRecord {
 // 10: owner is never a person, real relationship phrasing, aliases merged, person-to-person links, standing.
 const PERSON_INDEX_VERSION = '10';
 
+export type KnowledgeMapResult = KnowledgeMap & {
+  notes: Array<{ id: string; text: string; kind: string; at: number; confidence: number; archived: boolean }>;
+};
+
 export class UserMemoryStore {
   private db: SecondBrainDB;
   private userKey: string;
@@ -110,6 +115,8 @@ export class UserMemoryStore {
 
   /** The owner's own names: never a person, always "you". */
   private ownerNames: Set<string>;
+  /** Last knowledge map per mode, rebuilt only when the brain changed. */
+  private mapCache = new Map<string, { key: string; value: KnowledgeMapResult }>();
 
   constructor(config: MercuryConfig, userKey: string = 'user:owner', dbPath?: string) {
     this.userKey = userKey;
@@ -484,6 +491,34 @@ export class UserMemoryStore {
   /** Retired beliefs: still searchable, no longer shown to the model. */
   getSubconscious(limit: number = 10): UserMemoryRecord[] {
     return this.beliefs.list({ statuses: ['retired'], limit }).map((b) => this.toBeliefRecord(b));
+  }
+
+  /**
+   * Everything known, as a mind map (knowledge-map.ts): themes, sub-themes,
+   * notes and sparse "related" links. Local and free (no model calls);
+   * cached until a belief or archive row changes; theme ids carry over from
+   * the last build so colours and places stay put.
+   */
+  knowledgeMap(opts: { archive?: boolean } = {}): KnowledgeMapResult {
+    const archive = !!opts.archive;
+    const mode = archive ? 'archive' : 'live';
+    const key = this.db.knowledgeSignature(this.userKey, this.userKey, archive);
+    const hit = this.mapCache.get(mode);
+    if (hit && hit.key === key) return hit.value;
+    const now = Date.now();
+    const notes: KnowledgeMapResult['notes'] = this.beliefs.list({ limit: 100_000 }).map((b) => ({
+      id: b.id, text: b.statement, kind: b.kind, at: b.updatedAt, confidence: Number(this.beliefs.confidence(b, now).toFixed(3)), archived: false,
+    }));
+    if (archive) for (const r of this.db.archiveNotes(this.userKey)) notes.push({ ...r, archived: true });
+    const metaKey = `knowledge_map_themes_v1_${mode}`;
+    let previous: ThemeMemory = {};
+    try { previous = JSON.parse(this.db.getMeta(metaKey) ?? '{}') as ThemeMemory; } catch { /* rebuild fresh */ }
+    const owner = [...this.ownerNames].filter((n) => n !== 'user' && n !== 'the user');
+    const map = buildKnowledgeMap(notes.map((n) => ({ id: n.id, text: n.text, kind: n.kind, at: n.at, weight: n.archived ? 0.5 : 1 })), previous, { ownerNames: owner });
+    try { this.db.setMeta(metaKey, JSON.stringify(themeMemory(map))); } catch { /* ids just won't carry over */ }
+    const value = { ...map, notes };
+    this.mapCache.set(mode, { key, value });
+    return value;
   }
 
   getById(id: string): UserMemoryRecord | null {

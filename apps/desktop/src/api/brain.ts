@@ -67,6 +67,17 @@ export interface BrainGraphData {
   available: boolean;
 }
 
+/** The knowledge map (GET /api/brain/map): themes → sub-themes → notes, with sparse "related" links. */
+export interface BrainMap {
+  themes: Array<{ id: string; label: string; terms: string[]; parent: string | null; size: number }>;
+  /** note id → the theme (or sub-theme) it sits in. */
+  placement: Record<string, string>;
+  links: Array<{ a: string; b: string; w: number }>;
+  notes: Array<{ id: string; text: string; kind: string; at: number; confidence: number; archived: boolean }>;
+  stats: { notes: number; links: number; themes: number; ms: number };
+  available: boolean;
+}
+
 export interface CheckStatus {
   enabled: boolean;
   pending: number;
@@ -118,6 +129,7 @@ export const brain = {
   runCheck: () => http.post<{ checked: number; status: CheckStatus }>("/api/brain/persons/checks/run"),
   queueExisting: () => http.post<{ queued: number; status: CheckStatus | null }>("/api/brain/persons/checks/queue-existing"),
 
+  map: (archive = false) => http.get<BrainMap>(`/api/brain/map${archive ? "?archive=1" : ""}`),
   graph: (memories = 300, shadows = false) => http.get<BrainGraphData>(`/api/brain/graph/v2?memories=${memories}${shadows ? "&shadows=1" : ""}`),
   relations: () => http.get<{ relations: Array<{ label: string; cardinality: "one" | "many" }> }>("/api/brain/relations"),
 };
