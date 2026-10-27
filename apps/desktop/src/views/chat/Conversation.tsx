@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { PlanCard } from "./PlanCard";
 import { cx } from "~/lib/cx";
 import { useConversation, useConversationStore } from "~/app/conversation";
 import { answerPrompt } from "~/app/events";
@@ -99,6 +100,7 @@ export function Conversation({ header, empty, composer }: { header: ReactNode; e
         )}
       </div>
 
+      <PlanCard surface={composer.surface} />
       <Composer {...composer} />
     </section>
   );

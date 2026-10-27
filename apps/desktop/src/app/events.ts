@@ -8,6 +8,7 @@
 import { useEffect } from "react";
 import { openStream } from "~/api/stream";
 import * as api from "~/api/mercury";
+import { http } from "~/api/client";
 import type { BotActivityEvent, ChatMessage, CodeMode, PendingPrompt } from "~/api/types";
 import { useBots, useChat, useRuntimeState, type AgentState } from "./store";
 import { conversations, useCodeSessions, type ConversationStore, type Surface } from "./conversation";
@@ -92,6 +93,11 @@ function handleEvent(store: ConversationStore, event: string, raw: string): void
       conv.setAgent("thinking");
       conv.setLive((l) => l);
       break;
+    case "plan": {
+      const steps = Array.isArray(data.steps) ? (data.steps as Array<{ label: string; status: "pending" | "active" | "done" }>) : [];
+      if (steps.length) conv.setPlan({ steps, updatedAt: Number(data.updatedAt) || Date.now() });
+      break;
+    }
     case "reasoning":
       if (data.done === true) break;
       if (typeof data.text === "string" && data.text) conv.setLive((l) => ({ ...l, reasoning: (l.reasoning + data.text).slice(-20_000) }));
@@ -205,6 +211,10 @@ export async function openThread(surface: Surface, id: string | null): Promise<v
     return;
   }
   store.getState().setLoading(true);
+  // The plan Mercury was working through in this conversation, if any.
+  void http.get<{ plan: { steps: Array<{ label: string; status: "pending" | "active" | "done" }>; updatedAt: number } | null }>(`/api/chat/plan?sessionId=${encodeURIComponent(id)}`)
+    .then((r) => { if (store.getState().activeId === id && r.plan?.steps?.length) store.getState().setPlan(r.plan); })
+    .catch(() => { /* older Mercury: no plans */ });
   try {
     const thread = await api.chat.thread(id);
     store.getState().setMessages(thread.messages ?? []);
