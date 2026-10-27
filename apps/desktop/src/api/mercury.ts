@@ -99,11 +99,16 @@ export const bots = {
 
 export const plugins = {
   list: (refresh = false) => http.get<{ items: PluginItem[]; catalogError?: string; stale: boolean; safeMode: boolean }>(`/api/plugins${refresh ? "?refresh=1" : ""}`),
-  install: (source: string) => http.post<{ id: string; name: string; version: string }>("/api/plugins/install", { source }),
+  install: (source: string, opts: { enable?: boolean; force?: boolean } = {}) =>
+    http.post<{ id: string; name: string; version: string; unchanged?: boolean; tier?: string; verified?: boolean }>("/api/plugins/install", { source, ...opts }),
+  /** Full detail: settings with values (secrets as isSet), groups, what's missing. */
+  info: (id: string) => http.get<{ plugin: PluginItem | null }>(`/api/plugins/${encodeURIComponent(id)}`).then((r) => r.plugin),
+  setSetting: (id: string, key: string, value: unknown) => http.post<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(id)}/settings`, { key, value }),
+  rollback: (id: string) => http.post<{ from: string; to: string }>(`/api/plugins/${encodeURIComponent(id)}/rollback`),
   enable: (id: string) => http.post<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(id)}/enable`),
   disable: (id: string) => http.post<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(id)}/disable`),
   update: (id: string) => http.post<{ changed: Array<{ id: string; from: string; to: string }> }>(`/api/plugins/${encodeURIComponent(id)}/update`),
-  uninstall: (id: string) => http.delete<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(id)}`),
+  uninstall: (id: string, purge = false) => http.delete<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(id)}${purge ? "?purge=1" : ""}`),
 };
 
 export const mcp = {

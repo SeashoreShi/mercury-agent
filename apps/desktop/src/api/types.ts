@@ -225,14 +225,25 @@ export interface BotActivityEvent {
 // ── Plugins / MCP / Skills ──
 export type PluginStatus = "available" | "installed" | "enabled" | "disabled" | "update-available" | "incompatible" | "error";
 
+/** A setting a plugin declares (from GET /api/plugins/:id). Secrets never carry a value, only isSet. */
 export interface PluginSetting {
   key: string;
-  label: string;
-  type: string;
-  value?: unknown;
+  type: "string" | "number" | "boolean" | "enum" | "secret";
+  label?: string;
   description?: string;
-  secret?: boolean;
+  value?: unknown;
+  options?: string[];
+  optionLabels?: Record<string, string>;
+  examples?: string[];
+  format?: "text" | "phone";
+  required?: boolean;
+  /** Asked during setup (right after install), in declaration order. */
+  setup?: boolean;
+  /** Only asked during setup while this requirement is missing (e.g. "provider:openai"). */
+  setupWhenMissing?: string;
+  isSet?: boolean;
   group?: string;
+  when?: Record<string, string | string[]> | Array<Record<string, string | string[]>>;
 }
 
 export interface PluginItem {
@@ -243,6 +254,8 @@ export interface PluginItem {
   tier: "official" | "community" | "local";
   status: PluginStatus;
   installedVersion?: string;
+  /** The version rollback goes back to, when it's still on disk. */
+  previousVersion?: string;
   latestVersion?: string;
   sizeBytes?: number;
   enabled: boolean;
@@ -250,8 +263,12 @@ export interface PluginItem {
   verified: boolean;
   tools: string[];
   commands: string[];
-  permissions?: { network: string[]; secrets: string[] };
+  permissions?: { network: string[]; secrets: string[]; desktop?: boolean; providers?: Record<string, { unlocks?: string }> };
   disabled?: { code: string; message: string; at: string };
+  /** Menu sections, with whether each is ready. */
+  settingGroups?: Array<{ id: string; label: string; description?: string; ready: boolean }>;
+  /** Optional providers or keys that aren't set up: what's off, and how to fix it. */
+  missing?: Array<{ key: string; unlocks: string; needs: string; fix: string }>;
   lastError?: string;
   incompatibleReason?: string;
   settings?: PluginSetting[];
