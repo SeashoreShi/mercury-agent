@@ -1,4 +1,4 @@
-import { Activity, Boxes, Info, Mic, PanelBottom, Palette, Power, Server, Smartphone, UserRound } from "lucide-react";
+import { Activity, Boxes, Info, MessagesSquare, Mic, PanelBottom, Palette, Power, Server, Smartphone, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cx } from "~/lib/cx";
 import { useUi } from "~/app/store";
@@ -17,18 +17,20 @@ import { Analytics } from "./Analytics";
 import { Profile } from "./Profile";
 import { ModelsSettings } from "./Models";
 import { VoiceSettings } from "./Voice";
+import { ChannelsSettings } from "./Channels";
 import { isVisible, orderedIds, useContributions, type ContributionArea } from "~/extensions/registry";
 
 /**
  * Settings: a section list on the left, one section on the right. Most-used
  * first (Appearance), plain labels, every control explains itself in one line.
  */
-type Section = "profile" | "models" | "voice" | "appearance" | "statusbar" | "analytics" | "connections" | "devices" | "startup" | "about";
+type Section = "profile" | "models" | "voice" | "channels" | "appearance" | "statusbar" | "analytics" | "connections" | "devices" | "startup" | "about";
 
 const SECTIONS: Array<{ id: Section; label: string; icon: typeof Palette }> = [
   { id: "profile", label: "Profile", icon: UserRound },
   { id: "models", label: "Models", icon: Boxes },
   { id: "voice", label: "Voice", icon: Mic },
+  { id: "channels", label: "Channels", icon: MessagesSquare },
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "statusbar", label: "Status bar", icon: PanelBottom },
   { id: "analytics", label: "Analytics", icon: Activity },
@@ -69,6 +71,7 @@ export function SettingsView({ connection, health, onSwitchConnection }: { conne
           {section === "profile" && <Profile />}
           {section === "models" && <ModelsSettings />}
           {section === "voice" && <VoiceSettings onOpenModels={() => setSection("models")} />}
+          {section === "channels" && <ChannelsSettings />}
           {section === "appearance" && <Appearance />}
           {section === "statusbar" && <StatusBarSettings />}
           {section === "analytics" && <Analytics />}

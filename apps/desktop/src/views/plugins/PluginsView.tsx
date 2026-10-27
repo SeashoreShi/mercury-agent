@@ -8,6 +8,9 @@ import { Badge, Empty, Mono, Segmented } from "~/components/ui/bits";
 import { ConfirmButton, IconTile, ItemRow, PageHeader, SearchField } from "~/components/ui/kit";
 import { StateOrb } from "~/components/indicators/StateOrb";
 import { Input } from "~/components/ui/Input";
+import { Dialog } from "~/components/ui/Dialog";
+import { useUi } from "~/app/store";
+import { ChannelPanel } from "./ChannelPanel";
 
 type Tab = "installed" | "catalog" | "mcp";
 
@@ -57,6 +60,16 @@ export function PluginsView() {
   const mcpShown = useMemo(() => servers.filter((s) => match(`${s.id} ${s.target}`)), [servers, q]);
   const updates = items.filter((p) => p.status === "update-available").length;
 
+  const [linking, setLinking] = useState<PluginItem | null>(null);
+  // Settings → Channels sends WhatsApp here: open its linking panel.
+  const focus = useUi((st) => st.pluginFocus);
+  const clearFocus = useUi((st) => st.clearPluginFocus);
+  useEffect(() => {
+    if (!focus) return;
+    const target = installed.find((x) => x.id === focus);
+    if (target) { setLinking(target); clearFocus(); }
+  }, [focus, installed, clearFocus]);
+
   async function act(key: string, fn: () => Promise<unknown>, done?: string) {
     setNote(null);
     setBusy(key);
@@ -92,6 +105,7 @@ export function PluginsView() {
               <PluginRow key={p.id} p={p} actions={
                 <>
                   {p.status === "update-available" && <Button size="sm" variant="primary" loading={busy === `u:${p.id}`} onClick={() => void act(`u:${p.id}`, () => api.plugins.update(p.id), `${p.name} updated.`)}>Update</Button>}
+                  {p.channel && p.channel.type !== "desktop" && p.enabled && <Button size="sm" variant="outline" onClick={() => setLinking(p)}>{p.channel.state === "connected" ? "Manage" : "Link account"}</Button>}
                   <Switch id={`plugin-${p.id}`} checked={p.enabled} onCheckedChange={(v) => void act(`t:${p.id}`, () => (v ? api.plugins.enable(p.id) : api.plugins.disable(p.id)))} label={p.enabled ? "On" : "Off"} />
                   <ConfirmButton size="sm" confirmLabel="Remove?" onConfirm={() => void act(`r:${p.id}`, () => api.plugins.uninstall(p.id), `${p.name} removed.`)}>Remove</ConfirmButton>
                 </>
@@ -122,6 +136,9 @@ export function PluginsView() {
               : mcpShown.map((s) => <McpRow key={s.id} s={s} />))}
         </div>
       </div>
+      <Dialog open={!!linking} onOpenChange={(o) => { if (!o) { setLinking(null); void load(); } }} title={linking ? `${linking.name} account` : ""} description="Link the account Mercury talks through." width={460}>
+        {linking && <ChannelPanel id={linking.id} name={linking.name} />}
+      </Dialog>
     </div>
   );
 }

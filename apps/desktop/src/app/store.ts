@@ -24,6 +24,10 @@ interface UiState {
   settingsSection: string | null;
   openSettings(section: string): void;
   clearSettingsSection(): void;
+  /** A plugin whose linking panel Plugins should open (e.g. WhatsApp from Settings → Channels). */
+  pluginFocus: string | null;
+  openPlugin(id: string): void;
+  clearPluginFocus(): void;
 }
 
 export const useUi = create<UiState>((set) => ({
@@ -36,6 +40,9 @@ export const useUi = create<UiState>((set) => ({
   settingsSection: null,
   openSettings: (section) => set({ view: "settings", settingsSection: section }),
   clearSettingsSection: () => set({ settingsSection: null }),
+  pluginFocus: null,
+  openPlugin: (id) => set({ view: "plugins", pluginFocus: id }),
+  clearPluginFocus: () => set({ pluginFocus: null }),
 }));
 
 interface RuntimeState {
