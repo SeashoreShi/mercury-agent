@@ -15,25 +15,29 @@ import { usePulse } from "~/app/pulse";
 /**
  * One entry in a conversation. Each kind the runtime stores gets its own
  * rendering:
- *  - user          your avatar and name, then a heading-weight line, no bubble
- *  - assistant     the mark and Mercury's name, then prose (markdown)
+ *  - user          on the right, in a soft bubble, your avatar beside it
+ *  - assistant     on the left, full width: the mark and Mercury's name, then prose (markdown)
  *  - tool-call     a collapsed "used N tools" row; open it for each call
  *  - system        a muted note
  */
 export const Message = memo(function Message({ message }: { message: ChatMessage }) {
+  const you = useDisplayName();
   if (message.role === "user") {
     const files = message.attachments ?? [];
     // "(Attached: a.png)" is the runtime's text for a files-only turn; the files say it better.
     const text = files.length > 0 && /^\(Attached: .*\)$/.test(message.content.trim()) ? "" : message.content;
     return (
-      <div className="group flex gap-4 pt-2">
-        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center" aria-hidden="true"><UserAvatar size={24} /></span>
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <Speaker who="you" />
+      <div className="group flex justify-end gap-3 pt-2">
+        <div className="flex min-w-0 max-w-[80%] flex-col items-end gap-1.5">
           {files.length > 0 && <Attachments items={files} />}
-          {text && <p className="whitespace-pre-wrap text-lg font-medium leading-[1.55] tracking-[-0.01em] text-ink" data-selectable>{text}</p>}
-          <MessageMeta timestamp={message.timestamp} />
+          {text && (
+            <p className="whitespace-pre-wrap break-words rounded-[22px] rounded-tr-md bg-ink/[0.065] px-4 py-2.5 text-base leading-[1.6] text-ink [overflow-wrap:anywhere]" data-selectable>
+              {text}
+            </p>
+          )}
+          <MessageMeta timestamp={message.timestamp} copy={text || undefined} align="end" />
         </div>
+        <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center" title={you} aria-hidden="true"><UserAvatar size={26} /></span>
       </div>
     );
   }
@@ -91,16 +95,16 @@ function Speaker({ who }: { who: "you" | "mercury" }) {
 }
 
 /** Time and copy, shown on hover so the conversation stays quiet. */
-function MessageMeta({ timestamp, copy }: { timestamp: string; copy?: string }) {
+function MessageMeta({ timestamp, copy, align = "start" }: { timestamp: string; copy?: string; align?: "start" | "end" }) {
   const [copied, setCopied] = useState(false);
   const time = formatTime(timestamp);
   return (
-    <div className="-mb-2 mt-2 flex h-6 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+    <div className={cx("-mb-2 flex h-6 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100", align === "end" ? "mt-0 flex-row-reverse" : "mt-2")}>
       {copy && (
         <button
           onClick={() => { void navigator.clipboard.writeText(copy).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200); }); }}
           className="flex h-6 items-center gap-1 rounded-md px-1.5 text-xs text-ink4 hover:bg-ink/[0.06] hover:text-ink"
-          aria-label="Copy answer"
+          aria-label={align === "end" ? "Copy message" : "Copy answer"}
         >
           {copied ? <Check size={13} className="text-accent" /> : <Copy size={13} />}
           {copied ? "Copied" : "Copy"}
