@@ -9,6 +9,9 @@ import type {
   BotPermissionsFile,
 } from './types.js';
 
+/** Duplicate bot copies already warned about in this process. */
+const REPORTED_FORKS = new Set<string>();
+
 export const BOT_MANIFEST_FILENAME = 'bot.yaml';
 export const BOT_PERSONA_FILENAME = 'persona.md';
 /** A bot's face. Extension-less on purpose: the format is sniffed from the bytes. */
@@ -469,7 +472,6 @@ export class BotStore {
     // concurrent runtime or a rename fails on Windows) must not let the same
     // bot appear twice. First occurrence wins; extra copies are flagged.
     const seenIds = new Set<string>();
-    const reportedForks = new Set<string>();
     // Fleet layout is physical: crew profiles nest inside their lead's dir,
     // so walk the tree (bounded by the fleet depth cap). Data dirs without a
     // bot.yaml (sandbox/, skills/, rotations) are descended harmlessly but
@@ -494,8 +496,9 @@ export class BotStore {
             if (!seenIds.has(m.id)) {
               seenIds.add(m.id);
               manifests.push(m);
-            } else if (!reportedForks.has(m.id)) {
-              reportedForks.add(m.id);
+            } else if (!REPORTED_FORKS.has(sub)) {
+              // Once per copy per run: the roster is read often, the log shouldn't fill.
+              REPORTED_FORKS.add(sub);
               logger.warn({ botId: m.id, dir: sub }, 'Duplicate physical bot profile — roster keeps only the first occurrence; run `mercury` and remove the stale copy');
             }
           }
