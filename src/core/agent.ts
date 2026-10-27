@@ -1992,11 +1992,12 @@ export class Agent {
    * Record the model's plan checklist (update_plan tool) into the TUI so the
    * user sees which step is being implemented. Never throws.
    */
-  private maybeRecordPlanProgress(channel: any, toolName: string, input: unknown): void {
+  private maybeRecordPlanProgress(channel: any, toolName: string, input: unknown, targetId?: string): void {
     try {
       if (toolName !== 'update_plan') return;
-      if (!(channel instanceof CLIChannel)) return;
-      channel.setPlanProgress((input as any)?.steps);
+      if (channel instanceof CLIChannel) channel.setPlanProgress((input as any)?.steps);
+      // The apps (Chat, Code): a card above the composer, kept with the conversation.
+      else if (typeof channel?.sendPlan === 'function') channel.sendPlan((input as any)?.steps, targetId);
     } catch { /* checklist must never break the tool loop */ }
   }
 
@@ -3057,7 +3058,7 @@ export class Agent {
                     const trValue = toolResultValue(toolResults[i]);
                     recordExecuteToolResult(tc.toolName, trValue);
                     this.maybeShowFileChange(channel, msg, tc.toolName, tc.input, trValue);
-                    this.maybeRecordPlanProgress(channel, tc.toolName, tc.input);
+                    this.maybeRecordPlanProgress(channel, tc.toolName, tc.input, msg.channelId);
                     const resultStr = typeof trValue === 'string' ? trValue : JSON.stringify(trValue ?? '');
                     const failed = resultStr.length < 5000 && (
                       resultStr.startsWith('Error:') ||
@@ -3311,7 +3312,7 @@ export class Agent {
                   }
                   recordExecuteToolResult(tc.toolName, toolResultValue(toolResults[i]));
                   this.maybeShowFileChange(channel, msg, tc.toolName, tc.input, toolResultValue(toolResults[i]));
-                  this.maybeRecordPlanProgress(channel, tc.toolName, tc.input);
+                  this.maybeRecordPlanProgress(channel, tc.toolName, tc.input, msg.channelId);
                   loopDetector.record(tc.toolName, tc.input as Record<string, any>, false);
                 }
               }
@@ -3915,7 +3916,7 @@ export class Agent {
                     lastGuardToolFailure = `${tc.toolName}: ${guardResultText.slice(0, 120)}`;
                   }
                   this.maybeShowFileChange(channel, msg, tc.toolName, tc.input, guardToolResult);
-                  this.maybeRecordPlanProgress(channel, tc.toolName, tc.input);
+                  this.maybeRecordPlanProgress(channel, tc.toolName, tc.input, msg.channelId);
                   loopDetector.record(tc.toolName, tc.input as Record<string, any>, false);
                 }
               }

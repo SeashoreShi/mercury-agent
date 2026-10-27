@@ -122,6 +122,13 @@ const chat = new Hono();
 
 // ─── SSE Events ──────────────────────────────────────────────
 
+/** The conversation's latest plan checklist (update_plan), for a client opening the thread. */
+chat.get('/api/chat/plan', (c) => {
+  if (!webChannel) return c.json({ plan: null });
+  const id = c.req.query('sessionId');
+  return c.json({ plan: id ? webChannel.plans.get(id) : null });
+});
+
 chat.get('/api/chat/events', (c) => {
   if (!webChannel) {
     return c.json({ error: 'Web channel not initialized' }, 503);
