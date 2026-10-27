@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { logger } from '../utils/logger.js';
 import { isSqliteAvailable, openSqlite, type SqliteDatabase } from '../utils/sqlite-driver.js';
+import { exclusiveGroup, normalizeRelationship } from './person-standing.js';
 
 /**
  * True when any SQLite engine is available (better-sqlite3, bun:sqlite or
@@ -588,7 +589,11 @@ export class SecondBrainDB {
     confidence?: number;
     description?: string | null;
     personId?: string;
-    /** Queue a newly created person for a model check (new mentions only, never rebuilds). */
+    /**
+     * Context for a model check. A check is queued only when an unreviewed
+     * name RECURS (its second sighting), never on first sight and never in
+     * rebuilds: one-off names cost no tokens.
+     */
     queueCheck?: { context: string } | null;
   }): PersonRow | null {
     const now = Date.now();
@@ -618,7 +623,12 @@ export class SecondBrainDB {
 
     if (existing) {
       const confidence = Math.max(existing.confidence, params.confidence ?? existing.confidence);
-      const relationshipToUser = params.relationshipToUser ?? existing.relationship_to_user;
+      // A plain mention ("known") never erases a real relationship ("wife").
+      const incoming = this.allowedRelationship(params.userKey, existing.id, params.relationshipToUser);
+      // A specific relationship already stored wins over a vaguer one ("wife" over "spouse").
+      const current = existing.relationship_to_user;
+      const currentSpecific = !!current && !['known', 'spouse', 'family'].includes(current);
+      const relationshipToUser = incoming && incoming !== 'known' && !currentSpecific ? incoming : current ?? incoming;
       const description = params.description ?? existing.description;
       this.db.prepare(`
         UPDATE persons
@@ -628,11 +638,16 @@ export class SecondBrainDB {
 
       const updated = this.getPersonById(existing.id);
       if (!updated) throw new Error('Failed to update person record');
+      if (params.queueCheck && !updated.verified_by && (updated.kind ?? 'unverified') === 'unverified') {
+        this.db.prepare('INSERT OR IGNORE INTO person_checks (person_id, user_key, name, context, queued_at) VALUES (?, ?, ?, ?, ?)')
+          .run(updated.id, params.userKey, updated.display_name, params.queueCheck.context.slice(0, 400), now);
+      }
       return updated;
     }
 
     const id = params.personId || `per_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
     const confidence = params.confidence ?? 0.7;
+    params = { ...params, relationshipToUser: this.allowedRelationship(params.userKey, id, params.relationshipToUser) ?? (params.relationshipToUser ? 'known' : null) };
     this.db.prepare(`
       INSERT INTO persons (
         id, user_key, canonical_name, display_name, relationship_to_user,
@@ -654,11 +669,78 @@ export class SecondBrainDB {
 
     const created = this.getPersonById(id);
     if (!created) throw new Error('Failed to create person record');
-    if (params.queueCheck) {
-      this.db.prepare('INSERT OR IGNORE INTO person_checks (person_id, user_key, name, context, queued_at) VALUES (?, ?, ?, ?, ?)')
-        .run(id, params.userKey, params.name.trim(), params.queueCheck.context.slice(0, 400), now);
-    }
     return created;
+  }
+
+  /**
+   * Cardinality: a one-to-one relation (wife, mother, manager…) belongs to one
+   * person at a time. An extracted claim never takes it from someone who
+   * already holds it; only the owner can move it (see moveExclusiveRelationship).
+   * Returns the relationship to store, or null to keep what is there.
+   */
+  private allowedRelationship(userKey: string, personId: string, relationship: string | null | undefined): string | null {
+    const rel = normalizeRelationship(relationship);
+    if (!rel) return null;
+    const group = exclusiveGroup(rel);
+    if (!group) return rel;
+    const holder = this.exclusiveHolder(userKey, group, personId);
+    return holder ? null : rel;
+  }
+
+  /** Who holds a one-to-one relation group (spouse, mother…), other than `exceptId`. */
+  exclusiveHolder(userKey: string, group: string, exceptId?: string): PersonRow | undefined {
+    const rows = this.db.prepare(`SELECT * FROM persons WHERE user_key = ? AND relationship_to_user IS NOT NULL AND relationship_to_user != 'known' AND id != ?`)
+      .all(userKey, exceptId ?? '') as PersonRow[];
+    return rows.find((r) => exclusiveGroup(r.relationship_to_user) === group);
+  }
+
+  /** Owner moves a one-to-one relation: the previous holder becomes "known". */
+  releaseExclusiveRelationship(userKey: string, group: string, exceptId: string): PersonRow | undefined {
+    const holder = this.exclusiveHolder(userKey, group, exceptId);
+    if (holder) this.db.prepare(`UPDATE persons SET relationship_to_user = 'known', updated_at = ? WHERE id = ?`).run(Date.now(), holder.id);
+    return holder;
+  }
+
+  /** Find a person by name or alias without creating one. */
+  resolvePersonId(userKey: string, name: string): string | null {
+    const normalized = this.normalizePersonName(name);
+    if (!normalized) return null;
+    const direct = this.db.prepare('SELECT id FROM persons WHERE user_key = ? AND canonical_name = ? LIMIT 1').get(userKey, normalized) as { id: string } | undefined;
+    if (direct) return direct.id;
+    const alias = this.db.prepare('SELECT p.id FROM person_aliases a JOIN persons p ON p.id = a.person_id WHERE p.user_key = ? AND a.normalized_alias = ? LIMIT 1').get(userKey, normalized) as { id: string } | undefined;
+    return alias?.id ?? null;
+  }
+
+  /**
+   * The evidence behind each person, for standing (person-standing.ts):
+   * mentions in live beliefs and the archive, how many are social, the days
+   * they span, and links to other people. Grouped queries, one pass.
+   */
+  personEvidence(userKey: string): Array<{ id: string; relationship: string | null; kind: string | null; verified_by: string | null; owner_edited: number; mentions: number; social: number; days: number; plinks: number }> {
+    return this.db.prepare(`
+      WITH links AS (
+        SELECT bp.person_id AS pid, b.kind AS kind, b.created_at AS ts FROM belief_persons bp
+          JOIN beliefs b ON b.id = bp.belief_id AND b.status IN ('candidate','held','confirmed','contested')
+        UNION ALL
+        SELECT mp.person_id, m.type, m.created_at FROM memory_persons mp
+          JOIN memories m ON m.id = mp.memory_id AND m.dismissed = 0
+      ),
+      agg AS (
+        SELECT pid, COUNT(*) AS mentions, SUM(CASE WHEN kind IN ('relationship','episode') THEN 1 ELSE 0 END) AS social,
+          COUNT(DISTINCT date(ts / 1000, 'unixepoch', 'localtime')) AS days
+        FROM links GROUP BY pid
+      ),
+      rel AS (
+        SELECT pid, COUNT(*) AS n FROM (
+          SELECT source_person_id AS pid FROM person_relationships WHERE user_key = ?
+          UNION ALL SELECT target_person_id FROM person_relationships WHERE user_key = ?
+        ) GROUP BY pid
+      )
+      SELECT p.id, p.relationship_to_user AS relationship, p.kind, p.verified_by, p.owner_edited,
+        COALESCE(agg.mentions, 0) AS mentions, COALESCE(agg.social, 0) AS social, COALESCE(agg.days, 0) AS days, COALESCE(rel.n, 0) AS plinks
+      FROM persons p LEFT JOIN agg ON agg.pid = p.id LEFT JOIN rel ON rel.pid = p.id
+      WHERE p.user_key = ?
+    `).all(userKey, userKey, userKey) as Array<{ id: string; relationship: string | null; kind: string | null; verified_by: string | null; owner_edited: number; mentions: number; social: number; days: number; plinks: number }>;
   }
 
   // ── People in beliefs (the live brain since the Owner Model) ─────────────
@@ -697,7 +779,7 @@ export class SecondBrainDB {
       WHERE id = ?
     `).run(
       displayName,
-      fields.relationship !== undefined ? fields.relationship : row.relationship_to_user,
+      fields.relationship !== undefined ? normalizeRelationship(fields.relationship) : row.relationship_to_user,
       fields.description !== undefined ? fields.description : row.description,
       kind,
       fields.kind !== undefined ? 'owner' : row.verified_by ?? null,
@@ -725,7 +807,8 @@ export class SecondBrainDB {
   }
 
   /** Merge `fromId` into `intoId`: links, relationships and names move; `intoId` keeps its id. */
-  mergePersons(userKey: string, fromId: string, intoId: string): boolean {
+  mergePersons(userKey: string, fromId: string, intoId: string, opts: { byOwner?: boolean } = {}): boolean {
+    const byOwner = opts.byOwner ?? true;
     if (fromId === intoId) return false;
     const from = this.getPersonById(fromId);
     const into = this.getPersonById(intoId);
@@ -743,12 +826,12 @@ export class SecondBrainDB {
       this.db.prepare('UPDATE OR IGNORE person_relationships SET target_person_id = ? WHERE target_person_id = ?').run(intoId, fromId);
       this.db.prepare('DELETE FROM person_relationships WHERE source_person_id = target_person_id').run();
       const aliases = [from.display_name, ...(this.db.prepare('SELECT alias FROM person_aliases WHERE person_id = ?').all(fromId) as Array<{ alias: string }>).map((a) => a.alias)];
-      for (const a of aliases) this.addPersonAlias(intoId, a, 'owner');
+      for (const a of aliases) this.addPersonAlias(intoId, a, byOwner ? 'owner' : 'memory');
       const put = this.db.prepare(`INSERT INTO person_overrides (user_key, canonical_name, action, target_person_id, created_at) VALUES (?, ?, 'merge', ?, ?)
         ON CONFLICT(user_key, canonical_name) DO UPDATE SET action = 'merge', target_person_id = excluded.target_person_id, created_at = excluded.created_at`);
       put.run(userKey, from.canonical_name, intoId, now);
       this.db.prepare('DELETE FROM persons WHERE id = ?').run(fromId);
-      this.db.prepare('UPDATE persons SET owner_edited = 1, updated_at = ? WHERE id = ?').run(now, intoId);
+      if (byOwner) this.db.prepare('UPDATE persons SET owner_edited = 1, updated_at = ? WHERE id = ?').run(now, intoId);
     });
     return true;
   }

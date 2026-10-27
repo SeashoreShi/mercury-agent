@@ -6,6 +6,8 @@ import { looksLikeSecret } from '../learning/text.js';
 import { join } from 'node:path';
 import { copyFileSync, existsSync } from 'node:fs';
 import { logger } from '../utils/logger.js';
+import { capKnown, standingOf, type PersonStanding, type PersonTier } from './person-standing.js';
+import { extractAliases, extractOwnerRelations, extractPersonLinks, isOwnerName, ownerNameSet } from './person-extract.js';
 
 export type UserMemoryType =
   | 'identity'
@@ -84,6 +86,8 @@ export interface UserPersonRecord {
   /** Contact card: phone, email, birthday, location, company, notes, links. */
   meta: Record<string, unknown>;
   ownerEdited: boolean;
+  /** How sure Mercury is that this is someone in your life, and why (person-standing.ts). */
+  standing?: PersonStanding;
   firstSeenAt: number;
   lastSeenAt: number;
   createdAt: number;
@@ -91,7 +95,8 @@ export interface UserPersonRecord {
 }
 
 // 8: stricter name rules, owner overrides, model checks for new names, beliefs indexed.
-const PERSON_INDEX_VERSION = '9';
+// 10: owner is never a person, real relationship phrasing, aliases merged, person-to-person links, standing.
+const PERSON_INDEX_VERSION = '10';
 
 export class UserMemoryStore {
   private db: SecondBrainDB;
@@ -103,8 +108,12 @@ export class UserMemoryStore {
   /** What Mercury believes about this owner, with evidence (ADR-026). Shares the database. */
   readonly beliefs: BeliefStore;
 
+  /** The owner's own names: never a person, always "you". */
+  private ownerNames: Set<string>;
+
   constructor(config: MercuryConfig, userKey: string = 'user:owner', dbPath?: string) {
     this.userKey = userKey;
+    this.ownerNames = ownerNameSet(config.identity?.owner);
     this.consolidateThrottleMs = 5 * 60 * 1000;
     this.shareLearning = config.memory.collaborativeKnowledge?.shareLearning ?? false;
     const resolvedDbPath = dbPath ?? join(getMemoryDir(), 'second-brain', 'second-brain.db');
@@ -207,17 +216,50 @@ export class UserMemoryStore {
     return this.beliefs.list({ kinds, limit: 500 }).map((b) => this.toBeliefRecord(b));
   }
 
-  listPersons(query?: string, limit: number = 100): UserPersonRecord[] {
+  /**
+   * People, each with its standing. `tier` narrows to known / shadow /
+   * faint; omitted, everyone is returned (strongest first).
+   */
+  listPersons(query?: string, limit: number = 100, tier?: PersonTier): UserPersonRecord[] {
     this.indexNewBeliefs();
-    const rows = this.db.listPersons(this.userKey, query, limit);
-    return rows.map(row => this.toPersonRecord(row));
+    const standings = this.standings();
+    const rows = this.db.listPersons(this.userKey, query, 300);
+    return rows
+      .map((row) => ({ ...this.toPersonRecord(row), standing: standings.get(row.id) }))
+      .filter((p) => !tier || p.standing?.tier === tier)
+      .sort((a, b) => (b.standing?.score ?? 0) - (a.standing?.score ?? 0) || b.memoryCount - a.memoryCount)
+      .slice(0, Math.max(1, Math.min(limit, 300)));
   }
 
   getPerson(personId: string): UserPersonRecord | null {
     this.ensurePersonsBackfilled();
     const row = this.db.getPersonWithCount(this.userKey, personId);
     if (!row) return null;
-    return this.toPersonRecord(row);
+    return { ...this.toPersonRecord(row), standing: this.standings().get(personId) };
+  }
+
+  /** Standing for every person, with the known-people cap applied. */
+  standings(): Map<string, PersonStanding> {
+    const people = this.db.personEvidence(this.userKey).map((e) => ({
+      id: e.id,
+      ownerEdited: e.owner_edited === 1,
+      standing: standingOf({
+        mentions: e.mentions, socialMentions: e.social, distinctDays: e.days, relationship: e.relationship,
+        personLinks: e.plinks, kind: e.kind, verifiedBy: e.verified_by, ownerEdited: e.owner_edited === 1,
+      }),
+    }));
+    capKnown(people);
+    return new Map(people.map((p) => [p.id, p.standing]));
+  }
+
+  /** The one-to-one relation holder (spouse, mother…) other than `exceptId`, for conflicts on edit. */
+  exclusiveHolder(group: string, exceptId: string): UserPersonRecord | null {
+    const row = this.db.exclusiveHolder(this.userKey, group, exceptId);
+    return row ? this.getPerson(row.id) : null;
+  }
+
+  releaseExclusiveRelationship(group: string, exceptId: string): void {
+    this.db.releaseExclusiveRelationship(this.userKey, group, exceptId);
   }
 
   // ── Owner curation of people (stable ids; rebuilds respect every decision) ──
@@ -235,9 +277,24 @@ export class UserMemoryStore {
     return this.db.mergePersons(this.userKey, fromId, intoId);
   }
 
-  personGraph(maxMemories: number): PersonGraph {
+  /**
+   * The graph: known people (and shadows when asked), the memories, and the
+   * real links between them. Each person carries its tier and score.
+   */
+  personGraph(maxMemories: number, opts: { shadows?: boolean } = {}): Omit<PersonGraph, 'persons'> & { persons: Array<PersonGraph['persons'][number] & { tier: PersonTier; score: number }> } {
     this.indexNewBeliefs();
-    return this.db.personGraph(this.userKey, maxMemories);
+    const g = this.db.personGraph(this.userKey, maxMemories);
+    const standings = this.standings();
+    const persons = g.persons
+      .map((p) => ({ ...p, tier: standings.get(p.id)?.tier ?? 'faint' as PersonTier, score: standings.get(p.id)?.score ?? 0 }))
+      .filter((p) => p.tier === 'known' || (opts.shadows && p.tier === 'shadow'));
+    const ids = new Set(persons.map((p) => p.id));
+    return {
+      persons,
+      memories: g.memories,
+      memoryPersons: g.memoryPersons.filter((l) => ids.has(l.personId)),
+      relationships: g.relationships.filter((r) => ids.has(r.source) && ids.has(r.target)),
+    };
   }
 
   pendingPersonChecks(limit: number) {
@@ -534,14 +591,18 @@ export class UserMemoryStore {
     this.db.clearBeliefPersons(b.id);
     const queueCheck = this.rebuilding ? null : { context: text };
     const seen = new Set<string>();
+    const social = b.kind === 'relationship' || b.kind === 'episode';
+    // "Zaid (Zayd)": one person with two spellings, merged before anyone is linked.
+    for (const [name, alias] of extractAliases(text)) this.absorbAlias(name, alias);
     const link = (name: string, relation: string | null, role: string) => {
+      if (isOwnerName(name, this.ownerNames)) return;
       const person = this.db.upsertPerson({ userKey: this.userKey, name, relationshipToUser: relation, confidence: b.confidence, queueCheck });
       if (!person || seen.has(person.id)) return;
       seen.add(person.id);
       this.db.addPersonAlias(person.id, name, 'memory');
       this.db.linkBeliefPerson(b.id, person.id, role, b.confidence);
     };
-    for (const m of extractUserRelationshipMentions(text)) link(m.name, m.relation, 'relationship');
+    for (const m of extractOwnerRelations(text, this.ownerNames, (seg) => extractHumanNames(seg, true), { social })) link(m.name, m.relation, 'relationship');
     // New people come only from beliefs about people; other beliefs link to people already known.
     if (b.kind === 'relationship' || b.kind === 'episode') {
       // A belief about a relationship is about people: a name may open the sentence there
@@ -556,6 +617,38 @@ export class UserMemoryStore {
         this.db.linkBeliefPerson(b.id, person.id, 'interaction', b.confidence);
       }
     }
+    // Between people: "Zaid dislikes Shehzen", "Ali is Sara's brother".
+    for (const l of extractPersonLinks(text, this.ownerNames, isLikelyHumanName)) {
+      const a = this.db.resolvePersonId(this.userKey, l.a);
+      const c = this.db.resolvePersonId(this.userKey, l.b);
+      if (a && c && a !== c) this.db.upsertPersonRelationship({ userKey: this.userKey, sourcePersonId: a, targetPersonId: c, relationType: l.type, strength: b.confidence, evidenceMemoryId: null });
+      // (evidence_memory_id references the legacy archive; beliefs are cleared by a full rebuild instead.)
+    }
+  }
+
+  /**
+   * Two spellings of one person ("Zaid (Zayd)"). The alias is recorded so
+   * future mentions resolve; if both already exist as separate people, the
+   * one with less evidence folds into the other. Not an owner decision: the
+   * owner can still split or rename.
+   */
+  private absorbAlias(name: string, alias: string): void {
+    if (isOwnerName(name, this.ownerNames) || isOwnerName(alias, this.ownerNames)) return;
+    if (!isLikelyHumanName(name) || !isLikelyHumanName(alias)) return;
+    const a = this.db.resolvePersonId(this.userKey, name);
+    const b = this.db.resolvePersonId(this.userKey, alias);
+    if (a && b && a !== b) {
+      const rowA = this.db.getPersonById(a);
+      const rowB = this.db.getPersonById(b);
+      if (!rowA || !rowB || (rowA.owner_edited === 1 && rowB.owner_edited === 1)) return;
+      const ev = new Map(this.db.personEvidence(this.userKey).map((e) => [e.id, e.mentions]));
+      // Keep the owner-edited one, else the one with more evidence.
+      const keepA = rowA.owner_edited === 1 || (rowB.owner_edited !== 1 && (ev.get(a) ?? 0) >= (ev.get(b) ?? 0));
+      this.db.mergePersons(this.userKey, keepA ? b : a, keepA ? a : b, { byOwner: false });
+      return;
+    }
+    if (a && !b) this.db.addPersonAlias(a, alias, 'memory');
+    else if (b && !a) this.db.addPersonAlias(b, name, 'memory');
   }
 
   private indexPersonsForMemory(memory: UserMemoryRecord): void {
@@ -574,9 +667,10 @@ export class UserMemoryStore {
     this.db.clearRelationshipsByMemory(memory.id);
 
     if (memory.type === 'relationship') {
-      const relationMentions = extractUserRelationshipMentions(text);
+      const relationMentions = extractOwnerRelations(text, this.ownerNames, (seg) => extractHumanNames(seg, true), { social: true });
       if (relationMentions.length > 0) {
         for (const mention of relationMentions) {
+          if (isOwnerName(mention.name, this.ownerNames)) continue;
           const person = this.db.upsertPerson({
             userKey: this.userKey,
             name: mention.name,
@@ -592,6 +686,7 @@ export class UserMemoryStore {
         // Fallback: extract any capitalized names from relationship memories
         const names = extractHumanNames(text);
         for (const name of names) {
+          if (isOwnerName(name, this.ownerNames)) continue;
           const person = this.db.upsertPerson({
             userKey: this.userKey,
             name,
@@ -610,6 +705,7 @@ export class UserMemoryStore {
     // For identity/project/episode: extract names and create/link persons
     const names = extractHumanNames(text);
     for (const name of names) {
+      if (isOwnerName(name, this.ownerNames)) continue;
       const person = this.db.upsertPerson({
         userKey: this.userKey,
         name,
@@ -663,59 +759,6 @@ export class UserMemoryStore {
   }
 }
 
-const USER_RELATION_ROLE_MAP: Record<string, string> = {
-  wife: 'wife',
-  wives: 'wife',
-  husband: 'husband',
-  husbands: 'husband',
-  mother: 'mother',
-  mothers: 'mother',
-  mom: 'mother',
-  moms: 'mother',
-  father: 'father',
-  fathers: 'father',
-  dad: 'father',
-  dads: 'father',
-  brother: 'family',
-  brothers: 'family',
-  sister: 'family',
-  sisters: 'family',
-  son: 'family',
-  sons: 'family',
-  daughter: 'family',
-  daughters: 'family',
-  family: 'family',
-  families: 'family',
-  cousin: 'family',
-  cousins: 'family',
-  friend: 'friend',
-  friends: 'friend',
-  colleague: 'colleague',
-  colleagues: 'colleague',
-  coworker: 'colleague',
-  coworkers: 'colleague',
-  teammate: 'colleague',
-  teammates: 'colleague',
-  partner: 'partner',
-  partners: 'partner',
-  developer: 'colleague',
-  developers: 'colleague',
-  'co-founder': 'partner',
-  cofounder: 'partner',
-  cofounders: 'partner',
-  boss: 'colleague',
-  manager: 'colleague',
-  mentor: 'colleague',
-  mentee: 'colleague',
-  cto: 'colleague',
-  ceo: 'colleague',
-  lover: 'partner',
-  girlfriend: 'partner',
-  boyfriend: 'partner',
-  fiancee: 'partner',
-  fiance: 'partner',
-  spouse: 'partner',
-};
 
 const NON_PERSON_TERMS = new Set([
   'User', 'Users',
@@ -738,6 +781,8 @@ const NON_NAME_TOKENS = new Set([
   'and', 'or', 'but', 'if', 'then', 'so', 'because', 'while', 'during', 'after', 'before', 'since', 'until', 'about', 'with', 'without', 'from', 'into', 'onto', 'for', 'of', 'on', 'in', 'at', 'by', 'to', 'as', 'also', 'just', 'only', 'very', 'not', 'no', 'yes', 'all', 'any', 'some', 'each', 'every', 'both', 'more', 'most', 'other', 'another', 'such',
   // common verbs / states that start sentences
   'is', 'are', 'was', 'were', 'be', 'been', 'being', 'has', 'have', 'had', 'do', 'does', 'did', 'can', 'could', 'will', 'would', 'should', 'may', 'might', 'must',
+  // verbs and fillers that open a sentence in notes ("Recalled …", "Posted …")
+  'despite', 'invited', 'recalled', 'makes', 'made', 'posted', 'stated', 'noted', 'corrected', 'studied', 'collaborates', 'operates', 'derived', 'asked', 'said', 'says', 'wants', 'prefers', 'uses', 'used', 'likes', 'loves', 'built', 'building', 'created', 'fixed', 'added', 'shared', 'sent', 'replied', 'reply', 'confirmed', 'decided', 'started', 'finished', 'moved', 'plans', 'planned', 'profile', 'founders', 'fleet', 'phase', 'multi', 'governance', 'cycle', 'crisis', 'sites', 'reels', 'traffic', 'spec', 'impact', 'home', 'path',
   'task', 'tasks', 'node', 'active', 'full', 'three', 'two', 'one', 'four', 'five', 'recent', 'card', 'cards', 'vulnerabilities', 'downloads', 'official', 'account', 'developing', 'email', 'jira', 'creating', 'combinator', 'console', 'status', 'ready', 'completed', 'application', 'current', 'multiple', 'part', 'colab', 'includes', 'fork', 'mentioned', 'manages', 'requested', 'form', 'context', 'assigned', 'temp', 'issue', 'issues', 'next', 'real', 'progress', 'write', 'main', 'sub', 'setting', 'successfully', 'maintainers', 'new', 'old', 'first', 'last', 'daily', 'weekly', 'india', 'pakistan', 'search', 'checker', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'mercury', 'optimus',
   'married', 'working', 'works', 'worked', 'building', 'built', 'using', 'used', 'uses', 'wants', 'wanted', 'likes', 'liked', 'prefers', 'preferred', 'asked', 'asks', 'said', 'says', 'told', 'needs', 'needed', 'started', 'finished', 'created', 'updated', 'fixed', 'fixes', 'added', 'removed', 'please', 'thanks', 'thank',
   // roles and generic nouns
@@ -745,76 +790,6 @@ const NON_NAME_TOKENS = new Set([
   // software and product vocabulary
   'app', 'apps', 'web', 'website', 'site', 'page', 'interface', 'ui', 'ux', 'api', 'server', 'system', 'systems', 'graph', 'brain', 'memory', 'memories', 'animation', 'dashboard', 'desktop', 'mobile', 'code', 'repo', 'stack', 'cloud', 'plugin', 'plugins', 'skill', 'skills', 'chat', 'session', 'sessions', 'file', 'files', 'folder', 'data', 'database', 'feature', 'features', 'bug', 'bugs', 'fix', 'release', 'version', 'build', 'test', 'tests', 'error', 'errors', 'mode', 'settings', 'config', 'github', 'google', 'youtube', 'whatsapp', 'telegram', 'slack', 'discord', 'twitter', 'linkedin', 'battlefield', 'prime', 'architect',
 ]);
-
-interface UserRelationMention {
-  name: string;
-  relation: string;
-}
-
-function extractUserRelationshipMentions(text: string): UserRelationMention[] {
-  const mentions = new Map<string, UserRelationMention>();
-  const rolePattern = Object.keys(USER_RELATION_ROLE_MAP)
-    .sort((a, b) => b.length - a.length)
-    .map(r => r.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    .join('|');
-  const normalizedText = text.replace(/[\r\n]+/g, ' ').trim();
-
-  const patterns = [
-    new RegExp(`\\bmy\\s+(${rolePattern})\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+){0,2})\\b`, 'gi'),
-    new RegExp(`\\b([A-Z][a-z]+(?:\\s+[A-Z][a-z]+){0,2})\\s+is\\s+my\\s+(${rolePattern})\\b`, 'gi'),
-    new RegExp(`\\b([A-Z][a-z]+(?:\\s+[A-Z][a-z]+){0,2})\\s*,\\s*my\\s+(${rolePattern})\\b`, 'gi'),
-    new RegExp(`\\bmy\\s+(${rolePattern})\\s*,\\s*([A-Z][a-z]+(?:\\s+[A-Z][a-z]+){0,2})\\b`, 'gi'),
-  ];
-
-  for (const pattern of patterns) {
-    let match: RegExpExecArray | null;
-    while ((match = pattern.exec(normalizedText)) !== null) {
-      const first = match[1]?.trim();
-      const second = match[2]?.trim();
-      if (!first || !second) continue;
-
-      const firstIsRole = USER_RELATION_ROLE_MAP[first.toLowerCase()];
-      const role = firstIsRole ? first.toLowerCase() : second.toLowerCase();
-      const name = firstIsRole ? second : first;
-      const relation = USER_RELATION_ROLE_MAP[role];
-      if (!relation || !isLikelyHumanName(name)) continue;
-
-      const key = name.toLowerCase();
-      mentions.set(key, { name, relation });
-    }
-  }
-
-  const groupedPatterns = [
-    new RegExp(`\\bmy\\s+(${rolePattern})\\s+(?:is|are|named|called)\\s+([^.!?;]+)`, 'gi'),
-    new RegExp(`\\b(?:our|user(?:'s)?|users?)\\s+(${rolePattern})\\s+(?:is|are|named|called|include|includes)\\s+([^.!?;]+)`, 'gi'),
-    new RegExp(`\\b(${rolePattern})\\s+(?:is|are|named|called|include|includes)\\s+([^.!?;]+)`, 'gi'),
-    new RegExp(`\\b(?:i|we)\\s+have\\s+(${rolePattern})\\s+([^.!?;]+)`, 'gi'),
-    new RegExp(`\\b([^.!?;]+?)\\s+(?:is|are)\\s+my\\s+(${rolePattern})\\b`, 'gi'),
-    new RegExp(`\\b([^.!?;]+?)\\s+(?:is|are)\\s+(?:our|user(?:'s)?)\\s+(${rolePattern})\\b`, 'gi'),
-  ];
-
-  for (const pattern of groupedPatterns) {
-    let match: RegExpExecArray | null;
-    while ((match = pattern.exec(normalizedText)) !== null) {
-      const first = match[1]?.trim();
-      const second = match[2]?.trim();
-      if (!first || !second) continue;
-
-      const firstRole = USER_RELATION_ROLE_MAP[first.toLowerCase()];
-      const roleToken = firstRole ? first.toLowerCase() : second.toLowerCase();
-      const namesSegment = firstRole ? second : first;
-      const relation = USER_RELATION_ROLE_MAP[roleToken];
-      if (!relation) continue;
-
-      for (const name of extractHumanNames(namesSegment)) {
-        const key = name.toLowerCase();
-        mentions.set(key, { name, relation });
-      }
-    }
-  }
-
-  return [...mentions.values()];
-}
 
 function extractHumanNames(segment: string, allowSentenceStart = false): string[] {
   const found = new Set<string>();

@@ -19,6 +19,7 @@ function createStore(): UserMemoryStore {
   tempDirs.push(dir);
   const config = getDefaultConfig();
   config.memory.secondBrain = { enabled: true };
+  config.identity.owner = 'Test Owner';
   return new UserMemoryStore(config, 'user:owner', join(dir, 'second-brain', 'second-brain.db'));
 }
 
@@ -83,13 +84,15 @@ describe.skipIf(!sqliteAvailable)('people curation', () => {
     expect(store.listPersons('Tesla', 10)).toHaveLength(0);
   });
 
-  it('new names are queued for a check; rebuilds of old memories are not', () => {
+  it('a name is checked only when it recurs; one-offs and rebuilds cost nothing', () => {
     const store = createStore();
     remember(store, 'Zayd started school.');
     store.listPersons('', 10); // first use: the backfill indexes what already exists, unchecked
     expect(store.countPersonChecks()).toBe(0);
     remember(store, 'Shehzen visited yesterday.');
-    expect(store.countPersonChecks()).toBe(1);
+    expect(store.countPersonChecks()).toBe(0); // seen once: no tokens spent
+    remember(store, 'Shehzen brought biryani for dinner.');
+    expect(store.countPersonChecks()).toBe(1); // recurring: worth one check
     const [item] = store.pendingPersonChecks(10);
     store.applyPersonCheck(item.person_id, 'person');
     expect(store.countPersonChecks()).toBe(0);
@@ -98,12 +101,48 @@ describe.skipIf(!sqliteAvailable)('people curation', () => {
     expect(store.countPersonChecks()).toBe(0);
   });
 
-  it('the graph has only real links', () => {
+  it('one mention makes a shadow; a recurring one makes someone known, with real links only', () => {
     const store = createStore();
     remember(store, 'My wife Heer and my son Zayd went to the park.');
+    expect(store.personGraph(100).persons).toEqual([]);
+    const shadows = store.personGraph(100, { shadows: true });
+    expect(shadows.persons.map((p) => `${p.name}:${p.tier}`).sort()).toEqual(['Heer:shadow', 'Zayd:shadow']);
+
+    remember(store, 'Heer and Zayd baked a cake for my birthday.');
     const g = store.personGraph(100);
     expect(g.persons.map((p) => p.name).sort()).toEqual(['Heer', 'Zayd']);
-    expect(g.memoryPersons.length).toBe(2);
-    expect(g.memories.length).toBe(1);
+    expect(g.persons.every((p) => p.tier === 'known')).toBe(true);
+    expect(g.memoryPersons.length).toBe(4);
+    expect(g.memories.length).toBe(2);
+    const heer = store.listPersons('Heer', 5)[0];
+    expect(heer.relationshipToUser).toBe('wife');
+    expect(store.listPersons('Zayd', 5)[0].relationshipToUser).toBe('son');
+  });
+
+  it('the owner is never a person', () => {
+    const store = createStore();
+    remember(store, 'Test Owner married Heer in 2019. Test and Heer live in Srinagar.');
+    remember(store, "Heer is Test's wife.");
+    expect(store.listPersons('', 50).map((p) => p.name)).not.toContain('Test');
+    expect(store.listPersons('', 50).map((p) => p.name)).not.toContain('Test Owner');
+  });
+
+  it('two spellings in one note become one person', () => {
+    const store = createStore();
+    remember(store, "Zaid is the user's friend from college.");
+    remember(store, "Zayd is the user's friend who loves cricket.");
+    expect(store.listPersons('', 50).filter((p) => /Za[iy]d/.test(p.name))).toHaveLength(2);
+    remember(store, 'Zaid (also Zayd) dislikes long meetings.');
+    const left = store.listPersons('', 50).filter((p) => /Za[iy]d/.test(p.name));
+    expect(left).toHaveLength(1);
+    expect(left[0].memoryCount).toBe(3);
+  });
+
+  it('a one-to-one relation stays with its first holder unless the owner moves it', () => {
+    const store = createStore();
+    remember(store, "Heer is the user's wife.");
+    remember(store, "Sara is the user's wife.");
+    expect(store.listPersons('Heer', 5)[0].relationshipToUser).toBe('wife');
+    expect(store.listPersons('Sara', 5)[0].relationshipToUser).toBe('known');
   });
 });

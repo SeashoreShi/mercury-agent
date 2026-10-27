@@ -3,6 +3,7 @@ import type { PersonVerifier } from '../../memory/person-verifier.js';
 import { loadConfig, getMemoryDir, saveConfig } from '../../utils/config.js';
 import { isBetterSqlite3Available } from '../../memory/second-brain-db.js';
 import { UserMemoryStore } from '../../memory/user-memory.js';
+import { cardinalityOf, exclusiveGroup, KNOWN_CAP, relationCatalog } from '../../memory/person-standing.js';
 import type { Belief, BeliefKind, BeliefStatus, BeliefStore, Evidence } from '../../memory/beliefs.js';
 import { join } from 'node:path';
 
@@ -71,6 +72,9 @@ function personToJson(p: any) {
     verifiedBy: p.verifiedBy ?? null,
     meta: p.meta ?? {},
     ownerEdited: p.ownerEdited === true,
+    /** 0-100 and known / shadow / faint, with the reasons (person-standing.ts). */
+    standing: p.standing ?? null,
+    cardinality: p.relationshipToUser ? cardinalityOf(p.relationshipToUser) : null,
     firstSeenAt: p.firstSeenAt,
     lastSeenAt: p.lastSeenAt,
     createdAt: p.createdAt,
@@ -217,7 +221,9 @@ brain.get('/api/brain/persons', async (c) => {
   const limit = Math.min(parseInt(c.req.query('limit') || '100'), 200);
   const kinds = (c.req.query('kind') || '').split(',').map((k) => k.trim()).filter(Boolean);
   const showRejected = c.req.query('rejected') === '1';
-  const persons = mem.listPersons(q, limit)
+  const tierParam = c.req.query('tier');
+  const tier = tierParam === 'known' || tierParam === 'shadow' || tierParam === 'faint' ? tierParam : undefined;
+  const persons = mem.listPersons(q, limit, tier)
     .filter((p) => showRejected || p.verifiedBy !== 'model-rejected')
     .filter((p) => kinds.length === 0 || kinds.includes(p.kind));
   return c.json({ persons: persons.map(personToJson), total: persons.length, available: true });
@@ -243,6 +249,9 @@ function cleanMeta(input: unknown): Record<string, unknown> | undefined {
   }
   return out;
 }
+
+/** Relationship words with their cardinality, for the edit form. */
+brain.get('/api/brain/relations', (c) => c.json({ relations: relationCatalog(), knownCap: KNOWN_CAP }));
 
 brain.get('/api/brain/persons/checks', (c) => {
   const status = personVerifier?.status();
@@ -274,9 +283,20 @@ brain.patch('/api/brain/persons/:id', async (c) => {
     return mem.markNotPerson(c.req.param('id')) ? c.json({ success: true, removed: true }) : c.json({ error: 'Person not found' }, 404);
   }
   const str = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : undefined);
+  // One-to-one relations (wife, mother, manager…) belong to one person: say who has it,
+  // and move it only when the owner confirms (force).
+  const relationship = body.relationship === null ? null : str(body.relationship, 60);
+  const group = relationship ? exclusiveGroup(relationship) : null;
+  if (group) {
+    const holder = mem.exclusiveHolder(group, c.req.param('id'));
+    if (holder && body.force !== true) {
+      return c.json({ error: `${holder.name} is already your ${holder.relationshipToUser}.`, conflict: { id: holder.id, name: holder.name, relationship: holder.relationshipToUser } }, 409);
+    }
+    if (holder) mem.releaseExclusiveRelationship(group, c.req.param('id'));
+  }
   const updated = mem.updatePerson(c.req.param('id'), {
     displayName: str(body.name, 80),
-    relationship: body.relationship === null ? null : str(body.relationship, 60),
+    relationship,
     description: body.summary === null ? null : str(body.summary, 2000),
     kind: kind as 'person' | 'pet' | 'unverified' | undefined,
     meta: cleanMeta(body.meta),
@@ -300,7 +320,7 @@ brain.get('/api/brain/graph/v2', (c) => {
   const mem = ensureMemory();
   if (!mem) return c.json({ available: false, error: SQLITE_DEPENDENCY_ERROR }, 503);
   const parsed = parseInt(c.req.query('memories') || '400', 10);
-  const g = mem.personGraph(Number.isFinite(parsed) ? parsed : 400);
+  const g = mem.personGraph(Number.isFinite(parsed) ? parsed : 400, { shadows: c.req.query('shadows') === '1' });
   return c.json({ ...g, available: true });
 });
 
