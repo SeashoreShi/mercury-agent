@@ -4,7 +4,7 @@ import { useUi } from "~/app/store";
 import { ErrorBoundary } from "~/components/ErrorBoundary";
 import { Badge, Segmented, Spinner } from "~/components/ui/bits";
 import { PageHeader } from "~/components/ui/kit";
-import { BrainGraph, type GraphNode } from "./BrainGraph";
+import { BrainGraph, type SelectableKind } from "./BrainGraph";
 import { Memories } from "./Memories";
 import { People } from "./People";
 import { PersonCard } from "./PersonCard";
@@ -21,7 +21,7 @@ export function BrainView() {
   const view = useUi((s) => s.view);
   const [tab, setTab] = useState<Tab>(() => { try { return (sessionStorage.getItem(TAB_KEY) as Tab) || "graph"; } catch { return "graph"; } });
   const [opened, setOpened] = useState<Record<Tab, boolean>>({ graph: false, memories: false, people: false });
-  const [selected, setSelected] = useState<{ id: string; kind: GraphNode["kind"] } | null>(null);
+  const [selected, setSelected] = useState<{ id: string; kind: SelectableKind } | null>(null);
   const [people, setPeople] = useState<BrainPerson[]>([]);
   const visible = view === "brain";
 

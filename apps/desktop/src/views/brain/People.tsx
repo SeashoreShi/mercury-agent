@@ -7,17 +7,19 @@ import { SearchField } from "~/components/ui/kit";
 import { cx } from "~/lib/cx";
 import { Initials, PersonCard, VerifiedBadge } from "./PersonCard";
 
-type Filter = "people" | "pets" | "unreviewed" | "all";
+type Filter = "known" | "shadow" | "pets" | "all";
 
 /**
- * People: contact cards for everyone in the brain, search, filters, and the
- * card on the right. "Unreviewed" are names Mercury found but nobody has
- * confirmed; the checks panel shows the slow, capped model check.
+ * People: contact cards, search, filters, and the card on the right.
+ * Known are people with recurring mentions and a real tie (a relationship
+ * to you or to someone else); Shadows are names Mercury is not sure about
+ * yet: kept, out of the way, and promoted by evidence or by you. The
+ * checks panel (under Shadows) shows the slow, capped model check.
  */
 export function People({ initialId }: { initialId?: string | null }) {
   const [people, setPeople] = useState<BrainPerson[] | null>(null);
   const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<Filter>("people");
+  const [filter, setFilter] = useState<Filter>("known");
   const [selected, setSelected] = useState<string | null>(initialId ?? null);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,14 +33,14 @@ export function People({ initialId }: { initialId?: string | null }) {
   const shown = useMemo(() => {
     const query = q.trim().toLowerCase();
     return (people ?? [])
-      .filter((p) => filter === "all" || (filter === "pets" ? p.kind === "pet" : filter === "unreviewed" ? p.kind === "unverified" : p.kind === "person" || (p.kind === "unverified" && !!p.relationship && p.relationship !== "known")))
+      .filter((p) => filter === "all" || (filter === "pets" ? p.kind === "pet" : tierOf(p) === filter))
       .filter((p) => !query || p.name.toLowerCase().includes(query) || (p.relationship ?? "").toLowerCase().includes(query) || JSON.stringify(p.meta ?? {}).toLowerCase().includes(query));
   }, [people, q, filter]);
 
   const counts = useMemo(() => ({
-    people: (people ?? []).filter((p) => p.kind === "person" || (p.kind === "unverified" && !!p.relationship && p.relationship !== "known")).length,
+    known: (people ?? []).filter((p) => tierOf(p) === "known").length,
+    shadow: (people ?? []).filter((p) => tierOf(p) === "shadow").length,
     pets: (people ?? []).filter((p) => p.kind === "pet").length,
-    unreviewed: (people ?? []).filter((p) => p.kind === "unverified").length,
   }), [people]);
 
   if (error) return <Empty title="Couldn't load people" body={error} />;
@@ -49,25 +51,28 @@ export function People({ initialId }: { initialId?: string | null }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex shrink-0 flex-wrap items-center gap-3 px-6 pb-3 pt-4">
           <Segmented size="md" value={filter} onChange={setFilter} options={[
-            { value: "people", label: `People · ${counts.people}` },
+            { value: "known", label: `Known · ${counts.known}` },
+            { value: "shadow", label: `Shadows · ${counts.shadow}` },
             { value: "pets", label: `Pets · ${counts.pets}` },
-            { value: "unreviewed", label: `Unreviewed · ${counts.unreviewed}` },
             { value: "all", label: "All" },
           ]} />
           <SearchField value={q} onChange={setQ} placeholder="Search names, relationships, details" className="ml-auto w-[300px]" />
         </div>
-        {filter === "unreviewed" && <ChecksPanel onChanged={load} />}
+        {filter === "shadow" && (
+          <p className="mx-6 mb-2 text-sm text-ink3">Names Mercury isn't sure about yet. They join Known once they recur and have a relationship, or when you confirm them.</p>
+        )}
+        {filter === "shadow" && <ChecksPanel onChanged={load} />}
         <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
-          {shown.length === 0 ? <Empty title={q ? "No one matches" : filter === "unreviewed" ? "Nothing to review" : "No one here yet"} /> : (
+          {shown.length === 0 ? <Empty title={q ? "No one matches" : filter === "shadow" ? "No shadows" : "No one here yet"} /> : (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
               {shown.map((p) => (
                 <button key={p.id} onClick={() => setSelected(p.id)}
-                  className={cx("flex items-center gap-3 rounded-xl border bg-surface p-3 text-left transition-colors hover:border-line-strong", selected === p.id ? "border-accent/60" : "border-line")}>
+                  className={cx("flex items-center gap-3 rounded-xl border bg-surface p-3 text-left transition-colors hover:border-line-strong", selected === p.id ? "border-accent/60" : "border-line", tierOf(p) !== "known" && "opacity-75")}>
                   <Initials name={p.name} kind={p.kind} size={40} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-base font-medium text-ink">{p.name}</span>
                     <span className="block truncate text-xs capitalize text-ink3">{p.relationship && p.relationship !== "known" ? p.relationship : `${p.memoryCount} memor${p.memoryCount === 1 ? "y" : "ies"}`}</span>
-                    <span className="mt-1 block"><VerifiedBadge p={p} /></span>
+                    <span className="mt-1 flex items-center gap-1.5"><VerifiedBadge p={p} />{p.standing && <span className="font-mono text-2xs text-ink4" title={p.standing.reasons.join(" · ")}>{p.standing.score}</span>}</span>
                   </span>
                 </button>
               ))}
@@ -82,6 +87,10 @@ export function People({ initialId }: { initialId?: string | null }) {
       )}
     </div>
   );
+}
+
+function tierOf(p: BrainPerson): "known" | "shadow" | "faint" {
+  return p.standing?.tier ?? "shadow";
 }
 
 /** Dev-visible: what the "is it a person?" check is doing, with manual controls. */

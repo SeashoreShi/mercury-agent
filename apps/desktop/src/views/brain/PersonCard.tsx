@@ -1,6 +1,7 @@
 import { Cake, Check, Mail, MapPin, PawPrint, Phone, ShieldCheck, Sparkles, Briefcase, Link2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { brain, type BrainMemory, type BrainPerson, type PersonMeta } from "~/api/brain";
+import { ApiError } from "~/api/client";
 import { Button } from "~/components/ui/Button";
 import { Field, Input } from "~/components/ui/Input";
 import { Badge, Segmented, Spinner } from "~/components/ui/bits";
@@ -48,6 +49,8 @@ export function PersonCard({ id, onClose, onChanged, allPeople }: { id: string; 
         </div>
         {onClose && <button onClick={onClose} className="rounded-md p-1 text-ink4 hover:text-ink" aria-label="Close"><X size={16} /></button>}
       </div>
+
+      {!editing && person.standing && <StandingPanel person={person} />}
 
       {editing
         ? <EditForm person={person} onCancel={() => setEditing(false)} onSaved={(p) => { setPerson(p); setEditing(false); onChanged(); }} />
@@ -113,13 +116,19 @@ function EditForm({ person, onCancel, onSaved }: { person: BrainPerson; onCancel
   const [links, setLinks] = useState((person.meta.links ?? []).join("\n"));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<string | null>(null);
+  const [relations, setRelations] = useState<Array<{ label: string; cardinality: "one" | "many" }>>([]);
+  useEffect(() => { void brain.relations().then((r) => setRelations(r.relations)).catch(() => {}); }, []);
+  const spec = relations.find((r) => r.label === relationship.trim().toLowerCase());
   const set = (k: keyof PersonMeta) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setMeta((m) => ({ ...m, [k]: e.target.value }));
 
-  async function save() {
+  async function save(force = false) {
     setBusy(true);
     setError(null);
+    setConflict(null);
     try {
       const r = await brain.updatePerson(person.id, {
+        ...(force ? { force: true } : {}),
         name: name.trim() || person.name,
         kind,
         relationship: relationship.trim() || null,
@@ -128,7 +137,9 @@ function EditForm({ person, onCancel, onSaved }: { person: BrainPerson; onCancel
       });
       if (r.person) onSaved(r.person);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      // A one-to-one relation someone else holds: say who, offer to move it.
+      if (e instanceof ApiError && e.status === 409) setConflict(e.message);
+      else setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -140,7 +151,17 @@ function EditForm({ person, onCancel, onSaved }: { person: BrainPerson; onCancel
         <Field label="Name" htmlFor="pc-name"><Input id="pc-name" value={name} onChange={(e) => setName(e.target.value)} /></Field>
         <Segmented<"person" | "pet"> value={kind} onChange={setKind} options={[{ value: "person", label: "Person" }, { value: "pet", label: "Pet" }]} />
       </div>
-      <Field label="Relationship to you" htmlFor="pc-rel"><Input id="pc-rel" value={relationship} onChange={(e) => setRelationship(e.target.value)} placeholder="wife, son, friend, colleague…" /></Field>
+      <Field label="Relationship to you" htmlFor="pc-rel">
+        <Input id="pc-rel" list="pc-rel-options" value={relationship} onChange={(e) => { setRelationship(e.target.value); setConflict(null); }} placeholder="wife, son, friend, colleague…" />
+        <datalist id="pc-rel-options">{relations.map((r) => <option key={r.label} value={r.label}>{r.cardinality === "one" ? "only one person" : ""}</option>)}</datalist>
+        {spec && <span className="mt-1 block text-xs text-ink4">{spec.cardinality === "one" ? `Only one person can be your ${spec.label}.` : `You can have any number of ${spec.label}s.`}</span>}
+      </Field>
+      {conflict && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber/40 bg-amber/10 px-3 py-2 text-sm text-ink">
+          <span className="flex-1">{conflict}</span>
+          <Button type="button" size="sm" variant="outline" onClick={() => void save(true)}>Move it to {name.trim() || person.name}</Button>
+        </div>
+      )}
       <Field label="About" htmlFor="pc-sum"><textarea id="pc-sum" value={summary} onChange={(e) => setSummary(e.target.value)} rows={2} className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink focus:border-accent/60" /></Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Phone" htmlFor="pc-phone"><Input id="pc-phone" value={meta.phone ?? ""} onChange={set("phone")} /></Field>
@@ -184,6 +205,25 @@ function MergeInto({ person, people, onMerged }: { person: BrainPerson; people: 
         {candidates.length === 0 && <p className="px-2 text-xs text-ink4">No match.</p>}
       </div>
       <div className="mt-2 text-right"><Button size="sm" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button></div>
+    </div>
+  );
+}
+
+/** Why Mercury counts (or doesn't yet count) this as someone in your life. */
+function StandingPanel({ person }: { person: BrainPerson }) {
+  const s = person.standing!;
+  const tone = s.tier === "known" ? "bg-accent" : s.tier === "shadow" ? "bg-amber" : "bg-ink4";
+  const label = s.tier === "known" ? "Known" : s.tier === "shadow" ? "Shadow" : "Faint";
+  return (
+    <div className="rounded-xl border border-line bg-surface p-3">
+      <div className="flex items-center gap-2 text-sm">
+        <span className="font-medium text-ink">{label}</span>
+        <span className="font-mono text-xs text-ink3">{s.score}/100</span>
+        {person.cardinality === "one" && <span className="text-xs text-ink4">· one-to-one relationship</span>}
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-ink/[0.08]"><div className={cx("h-full rounded-full", tone)} style={{ width: `${s.score}%` }} /></div>
+      {s.reasons.length > 0 && <div className="mt-2 text-xs text-ink3">{s.reasons.join(" · ")}</div>}
+      {s.tier !== "known" && <div className="mt-1 text-xs text-ink4">Confirm them below, or they join Known once they recur with a relationship.</div>}
     </div>
   );
 }

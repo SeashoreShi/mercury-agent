@@ -30,6 +30,15 @@ export interface PersonMeta {
   links?: string[];
 }
 
+export type PersonTier = "known" | "shadow" | "faint";
+
+/** How sure Mercury is that this is someone in your life (runtime person-standing.ts). */
+export interface PersonStanding {
+  score: number;
+  tier: PersonTier;
+  reasons: string[];
+}
+
 export interface BrainPerson {
   id: string;
   name: string;
@@ -42,13 +51,16 @@ export interface BrainPerson {
   verifiedBy: "owner" | "model" | "model-rejected" | null;
   meta: PersonMeta;
   ownerEdited: boolean;
+  standing?: PersonStanding | null;
+  /** "one": a relation only one person can hold (wife, mother); "many": friends, children. */
+  cardinality?: "one" | "many" | null;
   firstSeenAt: number;
   lastSeenAt: number;
   connections?: Array<{ id: string; name?: string; display_name?: string; relation_type?: string; strength?: number }>;
 }
 
 export interface BrainGraphData {
-  persons: Array<{ id: string; name: string; kind: string; relationship: string | null; memoryCount: number }>;
+  persons: Array<{ id: string; name: string; kind: string; relationship: string | null; memoryCount: number; tier?: PersonTier; score?: number }>;
   memories: Array<{ id: string; summary: string; type: string; importance: number; updatedAt: number }>;
   memoryPersons: Array<{ memoryId: string; personId: string; role: string }>;
   relationships: Array<{ source: string; target: string; type: string; strength: number }>;
@@ -84,16 +96,18 @@ export const brain = {
   deleteMemory: (id: string) => http.delete<{ success: boolean }>(`/api/brain/memory/${encodeURIComponent(id)}`),
   addMemory: (body: { type: string; summary: string; detail?: string }) => http.post<BrainMemory>("/api/brain/memory", body),
 
-  persons: (opts: { q?: string; kind?: string; limit?: number } = {}) => {
+  persons: (opts: { q?: string; kind?: string; limit?: number; tier?: PersonTier } = {}) => {
     const qs = new URLSearchParams();
     if (opts.q) qs.set("q", opts.q);
     if (opts.kind) qs.set("kind", opts.kind);
+    if (opts.tier) qs.set("tier", opts.tier);
     qs.set("limit", String(opts.limit ?? 200));
     return http.get<{ persons: BrainPerson[] }>(`/api/brain/persons?${qs}`);
   },
   person: (id: string) => http.get<{ person: BrainPerson }>(`/api/brain/persons/${encodeURIComponent(id)}`),
   personMemories: (id: string) => http.get<{ memories: BrainMemory[] }>(`/api/brain/persons/${encodeURIComponent(id)}/memories?limit=60`),
-  updatePerson: (id: string, patch: { name?: string; relationship?: string | null; summary?: string | null; kind?: string; meta?: PersonMeta }) =>
+  /** A one-to-one relation someone else holds fails with 409 ("Heer is already your wife."); `force` moves it. */
+  updatePerson: (id: string, patch: { name?: string; relationship?: string | null; summary?: string | null; kind?: string; meta?: PersonMeta; force?: boolean }) =>
     http.patch<{ person?: BrainPerson; removed?: boolean }>(`/api/brain/persons/${encodeURIComponent(id)}`, patch),
   mergePerson: (id: string, into: string) => http.post<{ person: BrainPerson | null }>(`/api/brain/persons/${encodeURIComponent(id)}/merge`, { into }),
   notAPerson: (id: string) => http.patch<{ removed?: boolean }>(`/api/brain/persons/${encodeURIComponent(id)}`, { kind: "not_person" }),
@@ -102,5 +116,6 @@ export const brain = {
   runCheck: () => http.post<{ checked: number; status: CheckStatus }>("/api/brain/persons/checks/run"),
   queueExisting: () => http.post<{ queued: number; status: CheckStatus | null }>("/api/brain/persons/checks/queue-existing"),
 
-  graph: (memories = 300) => http.get<BrainGraphData>(`/api/brain/graph/v2?memories=${memories}`),
+  graph: (memories = 300, shadows = false) => http.get<BrainGraphData>(`/api/brain/graph/v2?memories=${memories}${shadows ? "&shadows=1" : ""}`),
+  relations: () => http.get<{ relations: Array<{ label: string; cardinality: "one" | "many" }>; knownCap: number }>("/api/brain/relations"),
 };

@@ -34,6 +34,7 @@
     "@tauri-apps/plugin-updater": "^2.14.0",
     "@tauri-apps/plugin-window-state": "^2.5.0",
     "clsx": "^2.1.1",
+    "d3-force": "^3.0.0",
     "force-graph": "^1.52.0",
     "lucide-react": "^0.511.0",
     "react": "^18.3.1",
@@ -45,6 +46,7 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.4",
+    "@types/d3-force": "^3.0.10",
     "@types/react": "^18.3.28",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.5.2",
