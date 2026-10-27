@@ -1,4 +1,4 @@
-import { AlertTriangle, Download, RefreshCw, Sparkles, Wand2, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, Download, RefreshCw, Sparkles, Wand2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import * as api from "~/api/mercury";
 import type { Skill, SkillDraft } from "~/api/types";
@@ -126,6 +126,8 @@ function SkillBuilder({ onSaved }: { onSaved: (name: string) => void }) {
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState<"build" | "revise" | "save" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Folded to one line until you open it; a draft in progress keeps it open.
+  const [open, setOpen] = useState(false);
 
   async function build(previous?: { draft: SkillDraft; feedback: string }) {
     setBusy(previous ? "revise" : "build");
@@ -150,21 +152,35 @@ function SkillBuilder({ onSaved }: { onSaved: (name: string) => void }) {
       onSaved(r.name);
       setDraft(null);
       setRequest("");
+      setOpen(false);
     } catch (e) { setError(errorText(e)); } finally { setBusy(null); }
   }
 
   const set = <K extends keyof SkillDraft>(k: K, v: SkillDraft[K]) => { setDraft((d) => (d ? { ...d, [k]: v } : d)); setProblem(null); setClash(null); };
 
+  if (!draft && !open) {
+    return (
+      <button onClick={() => setOpen(true)} aria-expanded={false}
+        className="flex w-full items-center gap-2.5 rounded-2xl border border-line bg-surface px-4 py-3 text-left transition-colors hover:border-ink/25">
+        <Wand2 size={16} className="shrink-0 text-accent" />
+        <span className="text-base font-medium text-ink">Build a skill</span>
+        <span className="min-w-0 flex-1 truncate text-xs text-ink4">Describe it; Mercury writes it, you check it before it's saved.</span>
+        <ChevronDown size={15} className="shrink-0 text-ink4" />
+      </button>
+    );
+  }
+
   if (!draft) {
     return (
       <section className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4">
-        <div className="flex flex-wrap items-center gap-2">
+        <button onClick={() => { setOpen(false); setError(null); }} aria-expanded className="flex flex-wrap items-center gap-2 text-left">
           <Wand2 size={16} className="text-accent" />
           <span className="text-base font-medium text-ink">Build a skill</span>
-          <span className="text-xs text-ink4">Describe it; Mercury writes it, and you check it before it's saved.</span>
-        </div>
+          <span className="min-w-0 flex-1 truncate text-xs text-ink4">Describe it; Mercury writes it, and you check it before it's saved.</span>
+          <ChevronDown size={15} className="shrink-0 rotate-180 text-ink4" />
+        </button>
         <div className="relative">
-          <textarea value={request} onChange={(e) => setRequest(e.target.value)} rows={3} placeholder="What should Mercury be able to do? Say what it starts from and what you want back."
+          <textarea autoFocus value={request} onChange={(e) => setRequest(e.target.value)} rows={3} placeholder="What should Mercury be able to do? Say what it starts from and what you want back."
             onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && request.trim().length >= 10) void build(); }}
             className="w-full resize-none rounded-lg border border-line bg-bg py-2.5 pl-3 pr-10 text-sm leading-relaxed text-ink placeholder:text-ink4 focus:border-accent/60" aria-label="Describe the skill" />
           <FieldMic value={request} onChange={setRequest} />
