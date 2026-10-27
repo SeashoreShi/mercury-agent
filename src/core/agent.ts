@@ -14,6 +14,10 @@ import type { TokenBudget } from '../utils/tokens.js';
 import type { CapabilityRegistry } from '../capabilities/registry.js';
 import type { ScheduledTaskManifest } from './scheduler.js';
 import { DeepSeekProvider } from '../providers/deepseek.js';
+import { ArtifactCollector } from '../artifacts/collector.js';
+import { artifactStore, type Artifact } from '../artifacts/store.js';
+import { artifactKindLabel, artifactRef, formatBytes } from '../artifacts/ref.js';
+import { getMercuryHome } from '../utils/config.js';
 import { createProvider } from '../providers/registry.js';
 import type { BaseProvider } from '../providers/base.js';
 import { Lifecycle } from './lifecycle.js';
@@ -1992,6 +1996,20 @@ export class Agent {
    * Record the model's plan checklist (update_plan tool) into the TUI so the
    * user sees which step is being implemented. Never throws.
    */
+  /** Tell the owner about this turn's artifacts: a card in the apps, a line in the terminal (it can't show them). */
+  private announceArtifacts(channel: any, items: Artifact[], targetId?: string): void {
+    try {
+      if (channel instanceof CLIChannel) {
+        const list = items.slice(0, 6).map((a) => `${a.name} (${artifactKindLabel(a.kind)}, ${formatBytes(a.size)})`).join(', ');
+        const more = items.length > 6 ? ` and ${items.length - 6} more` : '';
+        const where = items.length === 1 ? `\n  ${items[0].originalPath}` : '';
+        channel.sendSystemNotice(`◆ ${items.length === 1 ? 'Artifact' : `${items.length} artifacts`}: ${list}${more}${where}\n  Open them in Mercury Desktop → Artifacts.`);
+      } else if (typeof channel?.sendArtifacts === 'function') {
+        channel.sendArtifacts(items.map(artifactRef), targetId);
+      }
+    } catch { /* telling about artifacts must never break a turn */ }
+  }
+
   private maybeRecordPlanProgress(channel: any, toolName: string, input: unknown, targetId?: string): void {
     try {
       if (toolName !== 'update_plan') return;
@@ -2922,6 +2940,13 @@ export class Agent {
       // Compact per-turn tool trace, written to the session at turn end so
       // the next turn's history carries what was read and written.
       const turnToolTrace: string[] = [];
+      // Files this turn makes that are worth keeping (images, PDFs, reports…): artifacts of the conversation.
+      const artifactCollector = new ArtifactCollector({
+        startedAt: Date.now(),
+        cwd: this.capabilities.getCwd(),
+        surface: this.programmingMode.isActive() ? 'code' : 'chat',
+        mercuryHome: getMercuryHome(),
+      });
       const noteToolSteps = (toolCalls: readonly any[] | undefined, toolResults: readonly any[] | undefined): void => {
         if (!toolCalls || !toolResults) return;
         for (let i = 0; i < toolCalls.length; i++) {
@@ -3059,6 +3084,7 @@ export class Agent {
                     recordExecuteToolResult(tc.toolName, trValue);
                     this.maybeShowFileChange(channel, msg, tc.toolName, tc.input, trValue);
                     this.maybeRecordPlanProgress(channel, tc.toolName, tc.input, msg.channelId);
+                    artifactCollector.observe(tc.toolName, tc.input, trValue, this.capabilities.getCwd());
                     const resultStr = typeof trValue === 'string' ? trValue : JSON.stringify(trValue ?? '');
                     const failed = resultStr.length < 5000 && (
                       resultStr.startsWith('Error:') ||
@@ -3313,6 +3339,7 @@ export class Agent {
                   recordExecuteToolResult(tc.toolName, toolResultValue(toolResults[i]));
                   this.maybeShowFileChange(channel, msg, tc.toolName, tc.input, toolResultValue(toolResults[i]));
                   this.maybeRecordPlanProgress(channel, tc.toolName, tc.input, msg.channelId);
+                  artifactCollector.observe(tc.toolName, tc.input, toolResultValue(toolResults[i]), this.capabilities.getCwd());
                   loopDetector.record(tc.toolName, tc.input as Record<string, any>, false);
                 }
               }
@@ -3917,6 +3944,7 @@ export class Agent {
                   }
                   this.maybeShowFileChange(channel, msg, tc.toolName, tc.input, guardToolResult);
                   this.maybeRecordPlanProgress(channel, tc.toolName, tc.input, msg.channelId);
+                  artifactCollector.observe(tc.toolName, tc.input, guardToolResult, this.capabilities.getCwd());
                   loopDetector.record(tc.toolName, tc.input as Record<string, any>, false);
                 }
               }
@@ -4229,6 +4257,11 @@ export class Agent {
         }
       }
 
+      // Keep this turn's artifacts with the conversation (Mercury's copies, deleted with the thread).
+      let turnArtifacts: Artifact[] = [];
+      if (canonicalSessionId && artifactCollector.size > 0) {
+        try { turnArtifacts = artifactCollector.finalize(canonicalSessionId, artifactStore()); } catch (err) { logger.warn({ err }, 'Keeping artifacts failed'); }
+      }
       if (canonicalSessionId) {
         if (turnToolTrace.length > 0) {
           this.sessions.appendMessage(canonicalSessionId, {
@@ -4262,8 +4295,10 @@ export class Agent {
             cachedInputTokens: result.usage?.cachedInputTokens ?? 0,
             outputTokens: result.usage?.outputTokens ?? 0,
             ...(lastVerificationNote ? { verification: lastVerificationNote } : {}),
+            ...(turnArtifacts.length ? { artifacts: turnArtifacts.map(artifactRef) } : {}),
           },
         });
+        if (turnArtifacts.length && channel) this.announceArtifacts(channel, turnArtifacts, msg.channelId);
         if (msg.channelType !== 'internal' && msg.senderId !== 'system' && usedProvider) {
           this.scheduleSessionTitleGeneration(canonicalSessionId, usedProvider.name);
         }

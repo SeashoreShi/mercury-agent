@@ -103,6 +103,8 @@ import { spawnDetachedRestart } from './cli/daemon.js';
 import { recordVoiceCalls } from './plugins/voice-calls.js';
 import { setChannelRuntime } from './web/api/channels.js';
 import { setSkillBuilder } from './web/api/system.js';
+import { setArtifactSessions } from './web/api/artifacts.js';
+import { artifactStore } from './artifacts/store.js';
 import { isWebAuthInitialized, setWebPassword, writeAttachToken, initWebAuth } from './web/auth.js';
 import { startLoopLagMonitor } from './utils/loop-lag.js';
 import { McpManager, probeMcpServer, validateMcpConfig, type McpServerStatus } from './capabilities/mcp/index.js';
@@ -2507,6 +2509,16 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
   migrateLegacyMemory();
   const shortTerm = new ShortTermMemory(config);
   const sessions = new SessionRepository();
+  // Artifacts follow their thread: drop those whose thread is gone (deleted anywhere), now and every hour.
+  setArtifactSessions(sessions);
+  const sweepArtifacts = () => {
+    try {
+      const removed = artifactStore().reconcile((id) => { try { return sessions.get(id).status !== 'deleted'; } catch { return false; } });
+      if (removed) logger.info({ removed }, 'Removed artifacts of deleted threads');
+    } catch (err) { logger.warn({ err }, 'Artifact sweep failed'); }
+  };
+  sweepArtifacts();
+  setInterval(sweepArtifacts, 60 * 60_000).unref();
   // Desktop voice calls are saved as chat threads, live.
   recordVoiceCalls(sessions);
   setWebSessions(sessions);

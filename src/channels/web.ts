@@ -18,7 +18,7 @@ interface PendingInteraction {
 }
 
 export interface ChatEvent {
-  type: 'thinking' | 'reasoning' | 'plan' | 'provider' | 'heartbeat' | 'step_start' | 'step_done' | 'text_delta' | 'text_done' | 'permission_request' | 'permission_continue' | 'permission_mode' | 'permission_resolved' | 'choice_prompt' | 'choice_resolved' | 'loop_warning' | 'error' | 'bot_activity' | 'status' | 'session_switched';
+  type: 'thinking' | 'reasoning' | 'plan' | 'artifacts' | 'provider' | 'heartbeat' | 'step_start' | 'step_done' | 'text_delta' | 'text_done' | 'permission_request' | 'permission_continue' | 'permission_mode' | 'permission_resolved' | 'choice_prompt' | 'choice_resolved' | 'loop_warning' | 'error' | 'bot_activity' | 'status' | 'session_switched';
   data?: Record<string, unknown>;
 }
 
@@ -337,6 +337,12 @@ export class WebChannel extends BaseChannel {
     if (normalized.length === 0) return;
     const plan = targetId ? this.plans.set(targetId, normalized) : { steps: normalized, updatedAt: Date.now() };
     this.broadcast({ type: 'plan', data: { steps: plan.steps, updatedAt: plan.updatedAt, targetId } });
+  }
+
+  /** Artifacts this turn made (images, PDFs, reports…), for the conversation's live view. */
+  sendArtifacts(items: unknown[], targetId?: string): void {
+    if (!items.length) return;
+    this.broadcast({ type: 'artifacts', data: { items, targetId } });
   }
 
   sendStepDone(toolName: string, result: unknown, targetId?: string): void {

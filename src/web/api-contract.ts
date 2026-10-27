@@ -40,6 +40,7 @@ export const API_FEATURES: readonly string[] = Object.freeze([
   'chat.stop',         // POST /api/chat/stop — interrupt the running turn (same as /stop)
   'providers.manage',  // GET /api/providers/settings, POST /api/providers/:id/check (live, unsaved), PUT /api/providers/roles; saves apply live; health.setupRequired
   'voice.check',
+  'artifacts',         // GET /api/artifacts (paged), /:id, /:id/file (Range), POST /:id/export, DELETE /:id; SSE 'artifacts'; message.artifacts
   'chat.plan',         // SSE 'plan' { steps, updatedAt } + GET /api/chat/plan?sessionId= (the plan checklist)
   'channels',          // GET /api/channels, POST :type/check, PUT :type, POST :type/access, POST/GET signal/link
   'transcribe',        // GET/POST /api/transcribe — dictation: raw audio in, text out

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { artifactStore } from '../../artifacts/store.js';
 import { scopedProgrammingState } from '../../core/programming-mode.js';
 import { isInsideWorkspace } from './workspace-ide.js';
 import { storeInlineAttachments, attachmentRefs, resolveUploadRef, uploadMime } from './uploads.js';
@@ -48,6 +49,7 @@ function toThread(session: ReturnType<SessionRepository['get']>, includeMessages
       kind: message.kind,
       sequence: message.sequence,
       ...(typeof message.metadata?.voiceRole === 'string' ? { voice: message.metadata.voiceRole } : {}),
+      ...(Array.isArray(message.metadata?.artifacts) && message.metadata.artifacts.length ? { artifacts: message.metadata.artifacts } : {}),
       ...(Array.isArray(message.metadata?.attachments) && message.metadata.attachments.length > 0
         ? { attachments: (message.metadata.attachments as Array<{ name: string; kind: string; mime?: string; ref: string }>).map((a) => ({ name: a.name, kind: a.kind, mime: a.mime, url: `/api/chat/uploads/${a.ref}` })) }
         : {}),
@@ -684,7 +686,10 @@ chat.post('/api/chat/threads/:id/delete', async (c) => {
     if (target.id !== id) return c.json({ error: 'Confirmation must use the exact session ID' }, 400);
     const syncPending = sessionSyncEnabledFn?.() === true;
     const deleted = syncPending ? sessions.markDeleted(target.id) : sessions.deletePermanently(target.id);
-    return c.json({ deleted: true, sessionId: deleted.id, syncPending });
+    // Its artifacts go with it (Mercury's copies; the owner's original files stay).
+    let artifactsRemoved = 0;
+    try { artifactsRemoved = artifactStore().removeThread(target.id); } catch { /* the hourly sweep catches it */ }
+    return c.json({ deleted: true, sessionId: deleted.id, syncPending, artifactsRemoved });
   } catch {
     return c.json({ deleted: false, error: 'Thread not found' }, 404);
   }
