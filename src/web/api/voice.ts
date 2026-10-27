@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
 import { voiceFeed, VOICE_ACTIONS, type VoiceAction } from '../../plugins/voice-feed.js';
+import { checkVoiceKey, VOICE_KEY_ENV, VOICE_VENDORS, type VoiceVendor } from '../../plugins/voice-check.js';
+import { secretValue } from '../../plugins/store.js';
 
 /**
  * Live voice (Optimus) for clients:
@@ -11,6 +13,18 @@ import { voiceFeed, VOICE_ACTIONS, type VoiceAction } from '../../plugins/voice-
 const voice = new Hono();
 
 voice.get('/api/voice', (c) => c.json(voiceFeed.snapshot()));
+
+/**
+ * POST /api/voice/check { vendor, key?, endpoint? }: is this voice key good?
+ * With no key, checks the saved one. Read-only; nothing is stored.
+ */
+voice.post('/api/voice/check', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { vendor?: unknown; key?: unknown; endpoint?: unknown };
+  if (typeof body.vendor !== 'string' || !(VOICE_VENDORS as readonly string[]).includes(body.vendor)) return c.json({ ok: false, verified: false, message: 'Unknown voice service.' }, 400);
+  const vendor = body.vendor as VoiceVendor;
+  const key = typeof body.key === 'string' && body.key.trim() ? body.key : secretValue(VOICE_KEY_ENV[vendor]) ?? '';
+  return c.json(await checkVoiceKey(vendor, key, { endpoint: typeof body.endpoint === 'string' ? body.endpoint : undefined }));
+});
 
 voice.get('/api/voice/events', (c) => {
   const stream = new ReadableStream({

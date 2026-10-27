@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ProviderConfig, ProviderName } from './config.js';
 import { fetchChatGPTModels } from '../auth/chatgpt-models.js';
 import { fetchGitHubModels } from '../auth/github-models.js';
@@ -223,8 +224,11 @@ function prioritizeModels(models: string[], preferred: readonly string[]): strin
   return [...preferredMatches, ...others];
 }
 
+/** Per-call cap: the CLI picker shows 50; the desktop Settings asks for every model. */
+const modelLimit = new AsyncLocalStorage<number>();
+
 function limitModels(models: string[]): string[] {
-  return models.slice(0, MAX_MODEL_OPTIONS);
+  return models.slice(0, modelLimit.getStore() ?? MAX_MODEL_OPTIONS);
 }
 
 function isOpenAIChatModel(id: string): boolean {
@@ -559,7 +563,13 @@ async function fetchMercuryCloudModels(config: ProviderConfig): Promise<Provider
 export async function fetchProviderModelCatalog(
   provider: ProviderName,
   config: ProviderConfig,
+  opts: { limit?: number } = {},
 ): Promise<ProviderModelCatalog> {
+  if (opts.limit !== undefined) return modelLimit.run(Math.max(1, opts.limit), () => fetchCatalog(provider, config));
+  return fetchCatalog(provider, config);
+}
+
+async function fetchCatalog(provider: ProviderName, config: ProviderConfig): Promise<ProviderModelCatalog> {
   if (provider === 'mercuryCloud') {
     return fetchMercuryCloudModels(config);
   }

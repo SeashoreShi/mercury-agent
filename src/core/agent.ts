@@ -14,7 +14,7 @@ import type { TokenBudget } from '../utils/tokens.js';
 import type { CapabilityRegistry } from '../capabilities/registry.js';
 import type { ScheduledTaskManifest } from './scheduler.js';
 import { DeepSeekProvider } from '../providers/deepseek.js';
-import { createProvider, ProviderRegistry as ProviderRegistryImpl } from '../providers/registry.js';
+import { createProvider } from '../providers/registry.js';
 import type { BaseProvider } from '../providers/base.js';
 import { Lifecycle } from './lifecycle.js';
 import { Scheduler } from './scheduler.js';
@@ -2147,9 +2147,9 @@ export class Agent {
     }
 
     this.config.providers.default = providerName as any;
-    const previousProviders = this.providers;
-    this.providers = await ProviderRegistryImpl.create(this.config, getCloudTokenStore());
-    previousProviders.destroy();
+    // In place: bots, kanban and the IDE hold this same registry, so a new
+    // instance would leave them on the old (destroyed) providers.
+    await this.providers.reload(this.config, getCloudTokenStore());
     const selected = this.providers.getDefault();
     const model = selected.getModel();
 
@@ -2194,6 +2194,23 @@ export class Agent {
       if (pc && typeof pc === 'object') (pc as { model?: string }).model = model;
     }
     return this.switchSessionProvider(providerName);
+  }
+
+  /**
+   * Apply provider settings saved elsewhere (desktop Settings, dashboard)
+   * without a restart. Re-reads mercury.yaml so this in-memory config can't
+   * later write a stale key back over the new one, then reloads the shared
+   * registry in place.
+   */
+  async reloadProviders(): Promise<{ ok: boolean; providers: string[]; default: string; model: string }> {
+    const fresh = loadConfig();
+    Object.assign(this.config.providers, fresh.providers);
+    this.config.memory.learning = { ...this.config.memory.learning, provider: fresh.memory.learning?.provider };
+    if (fresh.bots?.fleets && this.config.bots?.fleets) this.config.bots.fleets.crewProvider = fresh.bots.fleets.crewProvider;
+    const { registered } = await this.providers.reload(this.config, getCloudTokenStore());
+    const current = this.getCurrentProvider();
+    updateCliProviderStatus(this.channels.get('cli'), current.name, current.model);
+    return { ok: registered.length > 0, providers: registered, default: current.name, model: current.model };
   }
 
   async birth(): Promise<void> {

@@ -75,7 +75,7 @@ status.get('/api/health', (c) => {
   if (!isLoopbackRequest(c) && !authenticateRequest(c)) return c.json({ error: 'Not found' }, 404);
   const lag = getLoopLag();
   const plugins = peekPluginManager()?.health();
-  return c.json({ ok: true, pid: process.pid, version: versionString(), ...apiContract(), state: currentStatus.state, booting: currentStatus.state === 'booting', loopLag: { p99Ms: Math.round(lag.p99Ms), maxMs: Math.round(lag.maxMs) }, ...(plugins ? { plugins: { safeMode: plugins.safeMode, running: plugins.running, tools: plugins.tools } } : {}) });
+  return c.json({ ok: true, pid: process.pid, version: versionString(), ...apiContract(), state: currentStatus.state, booting: currentStatus.state === 'booting', setupRequired: currentStatus.state === 'setup', loopLag: { p99Ms: Math.round(lag.p99Ms), maxMs: Math.round(lag.maxMs) }, ...(plugins ? { plugins: { safeMode: plugins.safeMode, running: plugins.running, tools: plugins.tools } } : {}) });
 });
 
 status.get('/api/status', (c) => {

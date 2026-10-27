@@ -38,6 +38,8 @@ export const API_FEATURES: readonly string[] = Object.freeze([
   'usage.history',     // GET /api/usage/history?days= — tokens per local day
   'brain.people',      // PATCH/merge persons, person checks, GET /api/brain/graph/v2
   'chat.stop',         // POST /api/chat/stop — interrupt the running turn (same as /stop)
+  'providers.manage',  // GET /api/providers/settings, POST /api/providers/:id/check (live, unsaved), PUT /api/providers/roles; saves apply live; health.setupRequired
+  'voice.check',       // POST /api/voice/check { vendor, key?, endpoint? }
   'brain.map',         // GET /api/brain/map[?archive=1] — themes, sub-themes, notes, related links
 ]);
 

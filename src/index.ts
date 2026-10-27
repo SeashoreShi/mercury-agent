@@ -95,6 +95,9 @@ import { ProviderModelFetchError, fetchProviderModelCatalog } from './utils/prov
 import { initCloudTokenStore } from './cloud/token-store.js';
 import { clearCloudRuntimeOnline, markCloudRuntimeOnline } from './cloud/runtime-status.js';
 import { startWebServer, stopWebServer, updateStatus as updateWebStatus, setUserMemory as setWebUserMemory, setWebChannel as setWebWebChannel, setScheduler as setWebScheduler, setAgentSupervisor as setWebSupervisor, setBackgroundTaskManager as setWebBgTasks, setSpotifyClient as setWebSpotify, setProgrammingMode as setWebProgrammingMode, setModelSwitchCallback as setWebModelSwitch, setCurrentProviderCallback as setWebCurrentProvider, setStatusSnapshotCallback as setWebStatusSnapshot, setKanbanSupervisor as setWebKanban, setKanbanBoardManager as setWebBoardManager, setKanbanProviders as setWebKanbanProviders, setIDEProviders as setWebIDEProviders, setSessionRepository as setWebSessions, setSessionSyncEnabledCallback as setWebSessionSyncEnabled, setBotManager as setWebBotManager, setBotsWebhookSecret, setShutdownHandler, setMcpManager as setWebMcpManager, setStopCallback as setWebStop } from './web/server.js';
+import { validateApiKey, validateBaseUrl, validateModelName } from './providers/provider-meta.js';
+import { setFirstProviderHandler, setProvidersReload } from './web/api/providers.js';
+import { spawnDetachedRestart } from './cli/daemon.js';
 import { isWebAuthInitialized, setWebPassword, writeAttachToken, initWebAuth } from './web/auth.js';
 import { startLoopLagMonitor } from './utils/loop-lag.js';
 import { McpManager, probeMcpServer, validateMcpConfig, type McpServerStatus } from './capabilities/mcp/index.js';
@@ -313,78 +316,6 @@ async function chooseDefaultProvider(config: MercuryConfig): Promise<void> {
 
     console.log(chalk.red('  Please choose a valid number from the list above.'));
   }
-}
-
-function looksLikeToken(value: string, minLength: number = 20): boolean {
-  return value.length >= minLength && !/\s/.test(value) && /[A-Za-z]/.test(value) && /\d/.test(value);
-}
-
-function validateApiKey(provider: ProviderName, value: string): string | null {
-  if (provider === 'openai') {
-    return /^sk-(proj-|svcacct-)?[A-Za-z0-9_-]{16,}$/i.test(value)
-      ? null
-      : 'OpenAI keys must start with `sk-`, `sk-proj-`, or `sk-svcacct-`.';
-  }
-
-  if (provider === 'anthropic') {
-    return /^sk-ant-[A-Za-z0-9_-]{16,}$/i.test(value)
-      ? null
-      : 'Anthropic keys must start with `sk-ant-`.';
-  }
-
-  if (provider === 'deepseek') {
-    return /^sk-[A-Za-z0-9_-]{16,}$/i.test(value)
-      ? null
-      : 'DeepSeek keys must start with `sk-`.';
-  }
-
-  if (provider === 'grok') {
-    return looksLikeToken(value)
-      ? null
-      : 'Grok keys must look like a real API token: long, no spaces, and not plain text.';
-  }
-
-  if (provider === 'ollamaCloud') {
-    return looksLikeToken(value)
-      ? null
-      : 'Ollama Cloud keys must look like a real API token: long, no spaces, and not plain text.';
-  }
-
-  if (provider === 'lmStudio') {
-    return null;
-  }
-
-  if (provider === 'mimo') {
-    return /^sk-[A-Za-z0-9_-]{16,}$/i.test(value)
-      ? null
-      : 'MiMo keys must start with `sk-`.';
-  }
-
-  if (provider === 'mimoTokenPlan') {
-    return /^tp-[A-Za-z0-9_-]{16,}$/i.test(value)
-      ? null
-      : 'MiMo Token Plan keys must start with `tp-`.';
-  }
-
-  return null;
-}
-
-function validateBaseUrl(value: string): string | null {
-  try {
-    const parsed = new URL(value);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return 'Base URL must start with http:// or https://.';
-    }
-    return null;
-  } catch {
-    return 'Please enter a valid URL.';
-  }
-}
-
-function validateModelName(value: string): string | null {
-  if (!value.trim()) return 'Model name is required.';
-  if (/\s/.test(value)) return 'Model name cannot contain spaces.';
-  return null;
 }
 
 async function chooseProviderModel(
@@ -2521,6 +2452,20 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
   if (!providers.hasProviders()) {
     if (isDaemon) {
       logger.error('No LLM providers available. Run `mercury doctor` to configure providers.');
+      if (config.web.enabled) {
+        // Setup mode: keep the API up so Mercury Desktop or the dashboard
+        // can connect a provider (there is no terminal on a desktop
+        // install). The first working provider restarts into normal mode.
+        setFirstProviderHandler(() => {
+          logger.info('A provider is connected; restarting out of setup mode');
+          if (!spawnDetachedRestart()) logger.error('Could not restart out of setup mode; run `mercury restart`');
+        });
+        startWebServer();
+        writeAttachToken();
+        updateWebStatus({ running: true, pid: process.pid, state: 'setup' });
+        setShutdownHandler(() => { void stopWebServer().finally(() => { releaseRuntimeProcess('daemon'); process.exit(0); }); });
+        logger.warn('Setup mode: connect a model provider from Mercury Desktop or the dashboard');
+      }
       return;
     }
     console.log(chalk.red('  No LLM providers available. Run `mercury doctor` to configure providers.'));
@@ -3527,6 +3472,7 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
   setWebProgrammingMode(agent.programmingMode);
   setWebBgTasks(agent.backgroundTasks);
   setWebModelSwitch((provider, model) => agent.switchProvider(provider, model));
+  setProvidersReload(() => agent.reloadProviders());
   setWebStop(() => agent.stopAllWork('stopped'));
   setWebCurrentProvider(() => agent.getCurrentProvider());
   // Live bottom bar for attached terminals and the dashboard: one snapshot,
