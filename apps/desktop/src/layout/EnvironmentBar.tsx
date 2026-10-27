@@ -15,7 +15,7 @@ import { StateOrb } from "~/components/indicators/StateOrb";
  */
 
 // macOS draws the traffic lights over this bar (titleBarStyle: Overlay).
-const IS_MAC = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform || navigator.userAgent);
+export const IS_MAC = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform || navigator.userAgent);
 
 export type Environment = "local" | "remote" | "cloud";
 

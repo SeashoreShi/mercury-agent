@@ -7,6 +7,7 @@ import { VoiceOrb } from "~/components/VoiceOrb";
 import { Button } from "~/components/ui/Button";
 import { Tooltip } from "~/components/ui/Tooltip";
 import { cx } from "~/lib/cx";
+import { IS_MAC } from "~/layout/EnvironmentBar";
 
 /**
  * Calling mode. Full window: the living circles, what's being said as
@@ -70,9 +71,11 @@ function CallScreen() {
   return (
     <div className="fixed inset-0 z-[70] flex bg-bg/95 backdrop-blur-xl animate-fade-in" role="dialog" aria-label="Voice call">
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-[52px] shrink-0 items-center gap-3 px-5" data-tauri-drag-region>
-          <span className="text-sm font-medium text-ink">Voice call</span>
-          {v.active && <span className="font-mono text-sm tabular-nums text-ink3">{clock}</span>}
+        {/* On a Mac the window buttons sit in this row: the title starts after them, centred on them. */}
+        <div className={cx("flex shrink-0 items-center gap-2.5", IS_MAC ? "h-9 pl-[84px] pr-3" : "h-[52px] px-5")} data-tauri-drag-region>
+          {v.active && <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-red" aria-hidden="true" />}
+          <span className="text-sm font-medium text-ink" data-tauri-drag-region>Voice call</span>
+          {v.active && <span className="font-mono text-xs tabular-nums text-ink3" data-tauri-drag-region>{clock}</span>}
           <span className="flex-1" data-tauri-drag-region />
           {v.threadId && (
             <Tooltip label="Open this call's chat" side="bottom">
@@ -145,7 +148,7 @@ function TranscriptPanel({ turns, onClose }: { turns: VoiceTurn[]; onClose: () =
   useEffect(() => { const el = ref.current; if (el) el.scrollTop = el.scrollHeight; }, [turns.length]);
   return (
     <aside className="flex w-[360px] shrink-0 flex-col border-l border-line bg-soft/80">
-      <div className="flex h-[52px] items-center justify-between px-4"><span className="text-sm font-medium text-ink">Transcript</span>
+      <div className={cx("flex shrink-0 items-center justify-between px-4", IS_MAC ? "h-9" : "h-[52px]")} data-tauri-drag-region><span className="text-sm font-medium text-ink">Transcript</span>
         <button onClick={onClose} className="text-ink4 hover:text-ink" aria-label="Close transcript"><X size={15} /></button></div>
       <div ref={ref} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-6" data-selectable>
         {turns.length === 0 && <p className="text-sm text-ink4">Nothing said yet.</p>}
