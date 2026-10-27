@@ -2,7 +2,7 @@
   "name": "mercury-desktop",
   "private": true,
   "version": "0.1.0",
-  "description": "Mercury Desktop — native shell for the Mercury agent runtime",
+  "description": "Mercury Desktop \u2014 native shell for the Mercury agent runtime",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +12,7 @@
     "tauri": "tauri",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
-    "icons": "tauri icon src-tauri/icons/source.png"
+    "icons": "node scripts/icons/build.mjs"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
@@ -46,6 +46,7 @@
     "zustand": "^5.0.5"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@tauri-apps/cli": "^2.12.4",
     "@types/d3-force": "^3.0.10",
     "@types/d3-hierarchy": "^3.1.7",

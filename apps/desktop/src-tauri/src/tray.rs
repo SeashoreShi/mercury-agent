@@ -1,4 +1,5 @@
 use tauri::{
+    image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle,
@@ -11,13 +12,19 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     let separator = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(app, &[&open, &separator, &quit])?;
 
-    let icon = app
-        .default_window_icon()
-        .cloned()
-        .ok_or_else(|| tauri::Error::AssetNotFound("default window icon".into()))?;
+    // macOS: a monochrome template image, tinted by the system to match the
+    // menu bar (light, dark, tinted wallpapers). Elsewhere: the colour tile.
+    #[cfg(target_os = "macos")]
+    let (icon, template) = (
+        Image::from_bytes(include_bytes!("../icons/tray/macos-template.png"))?,
+        true,
+    );
+    #[cfg(not(target_os = "macos"))]
+    let (icon, template) = (Image::from_bytes(include_bytes!("../icons/tray/tray.png"))?, false);
 
     TrayIconBuilder::with_id("main")
         .icon(icon)
+        .icon_as_template(template)
         .tooltip("Mercury")
         .menu(&menu)
         .show_menu_on_left_click(false)
