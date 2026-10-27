@@ -1,9 +1,10 @@
 import { Hono } from 'hono';
-import { isProviderConfigured, loadConfig, updateConfig, type MercuryConfig } from '../../utils/config.js';
+import { getActiveProviders, isProviderConfigured, loadConfig, updateConfig, type MercuryConfig, type ProviderName } from '../../utils/config.js';
 import { isChatModelId } from '../../utils/provider-models.js';
 import { MERCURY_CLOUD_API_URL, MERCURY_CLOUD_WS_URL } from '../../cloud/endpoints.js';
 import { PairingFailureError, pollPairingComplete, startPairingFlow } from '../../cloud/pairing.js';
-import { getCloudTokenStore } from '../../cloud/token-store.js';
+import { clearCloudTokenStore, getCloudTokenStore } from '../../cloud/token-store.js';
+import { clearCloudRuntimeOnline } from '../../cloud/runtime-status.js';
 import { isCloudRuntimeOnline } from '../../cloud/runtime-status.js';
 import { spawnDetachedRestart } from '../../cli/daemon.js';
 import type { PairingResult } from '../../cloud/types.js';
@@ -17,6 +18,8 @@ import { logger } from '../../utils/logger.js';
  *   POST   /api/cloud/signin    start browser pairing → { code, pairingUrl }; the runtime waits for approval
  *   GET    /api/cloud/signin    pairing progress: pending | done | failed
  *   DELETE /api/cloud/signin    stop waiting
+ *   POST   /api/cloud/enabled   { enabled } — use Cloud for chat or not (stay signed in either way)
+ *   POST   /api/cloud/signout   forget the Cloud sign-in on this computer, then restart
  *
  * A finished sign-in saves the new credentials and restarts the runtime so
  * the agent connection and the provider both start fresh with them.
@@ -148,6 +151,58 @@ cloud.delete('/api/cloud/signin', (c) => {
   if (pairing && pairing.status === 'pending') pairing.cancelled = true;
   pairing = null;
   return c.json({ ok: true });
+});
+
+/** Another working provider to fall back on, if any (Cloud can't be turned off or signed out of when it's the only one). */
+function otherProvider(config: MercuryConfig): ProviderName | null {
+  const other = getActiveProviders(config).find((p) => p.name !== 'mercuryCloud');
+  return other ? (other.name as ProviderName) : null;
+}
+
+let reload: (() => Promise<unknown>) | null = null;
+/** How a change reaches the running agent without a restart (registered by the runtime). */
+export function setCloudReload(fn: (() => Promise<unknown>) | null): void { reload = fn; }
+
+cloud.post('/api/cloud/enabled', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { enabled?: unknown };
+  if (typeof body.enabled !== 'boolean') return c.json({ error: 'enabled must be true or false' }, 400);
+  const config = loadConfig();
+  if (body.enabled && !config.providers.mercuryCloud.apiKey) return c.json({ error: 'Sign in to Mercury Cloud first.' }, 409);
+  const fallback = otherProvider(config);
+  if (!body.enabled && !fallback) {
+    return c.json({ error: 'Mercury Cloud is the only model connected. Connect another provider below before turning it off, or Mercury would have nothing to think with.', needsOther: true }, 409);
+  }
+  updateConfig((latest) => {
+    latest.providers.mercuryCloud.enabled = body.enabled as boolean;
+    if (!body.enabled && latest.providers.default === 'mercuryCloud' && fallback) latest.providers.default = fallback;
+  });
+  chatProbe = null;
+  try { await reload?.(); } catch (err) { logger.warn({ err: err instanceof Error ? err.message : String(err) }, 'Applying the Cloud change failed; it applies on restart'); }
+  return c.json({ ok: true, enabled: body.enabled, default: loadConfig().providers.default });
+});
+
+cloud.post('/api/cloud/signout', (c) => {
+  const config = loadConfig();
+  const fallback = otherProvider(config);
+  updateConfig((latest) => {
+    latest.cloud.enabled = false;
+    latest.cloud.jwt = '';
+    latest.cloud.refreshToken = '';
+    latest.cloud.agentId = '';
+    latest.cloud.agentApiKey = '';
+    latest.cloud.accessKey = '';
+    latest.providers.mercuryCloud.enabled = false;
+    latest.providers.mercuryCloud.apiKey = '';
+    if (latest.providers.default === 'mercuryCloud' && fallback) latest.providers.default = fallback;
+  });
+  clearCloudTokenStore();
+  clearCloudRuntimeOnline();
+  chatProbe = null;
+  if (pairing) { pairing.cancelled = true; pairing = null; }
+  // Restart so the agent connection and every cached Cloud token are gone for good.
+  // With no other provider, Mercury comes back in setup mode and asks for one.
+  setTimeout(() => { if (!restart()) logger.error('Signed out of Mercury Cloud, but could not restart; run `mercury restart`'); }, 300);
+  return c.json({ ok: true, restarting: true, fallback, setupNext: !fallback });
 });
 
 /** Save new Cloud credentials, the same way `mercury cloud connect` does, keeping a good model choice. */

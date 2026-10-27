@@ -114,3 +114,41 @@ describe('Mercury Cloud sign-in from the app', () => {
     expect(body.upgradeUrl).toBe('https://cloud.test/upgrade');
   });
 });
+
+describe('turning Mercury Cloud off, and signing out', () => {
+  const body = (b: unknown) => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+
+  it("won't turn Cloud off when it's the only model", async () => {
+    const res = await cloud.request('http://127.0.0.1/api/cloud/enabled', body({ enabled: false }));
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as any).needsOther).toBe(true);
+  });
+
+  it('turns off (handing the default to another provider) and back on, staying signed in', async () => {
+    const { writeFileSync, readFileSync: read } = await import('node:fs');
+    const YAML = await import('yaml');
+    const doc = YAML.parse(read(join(home, 'mercury.yaml'), 'utf-8'));
+    doc.providers.deepseek = { ...(doc.providers.deepseek ?? {}), name: 'deepseek', apiKey: 'sk-deepseek-000000000000000000', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', enabled: true };
+    writeFileSync(join(home, 'mercury.yaml'), YAML.stringify(doc));
+    const off = await cloud.request('http://127.0.0.1/api/cloud/enabled', body({ enabled: false }));
+    expect(off.status).toBe(200);
+    expect(((await off.json()) as any).default).toBe('deepseek');
+    expect(yaml()).toMatch(/mercuryCloud:[\s\S]*?enabled: false/);
+    expect(yaml()).toContain('sk-mc-new');
+    const on = await cloud.request('http://127.0.0.1/api/cloud/enabled', body({ enabled: true }));
+    expect(on.status).toBe(200);
+  });
+
+  it('signing out forgets every Cloud credential, keeps the other provider as default, then restarts', async () => {
+    vi.useFakeTimers();
+    const restart = vi.fn().mockReturnValue(true);
+    setCloudTestHooks({ restart });
+    const res = await cloud.request('http://127.0.0.1/api/cloud/signout', { method: 'POST' });
+    expect(((await res.json()) as any)).toMatchObject({ ok: true, restarting: true, fallback: 'deepseek', setupNext: false });
+    vi.advanceTimersByTime(400);
+    expect(restart).toHaveBeenCalledOnce();
+    const saved = yaml();
+    for (const secret of ['new.jwt.token', 'rt-new', 'agent-key-1', 'sk-mc-new']) expect(saved).not.toContain(secret);
+    expect(saved).toContain('default: deepseek');
+  });
+});

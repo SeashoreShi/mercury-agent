@@ -1,9 +1,10 @@
-import { CheckCircle2, CircleAlert, CircleDashed, ExternalLink, LogIn, RefreshCw, Sparkles, TriangleAlert, X } from "lucide-react";
+import { CheckCircle2, CircleAlert, CircleDashed, ExternalLink, LogIn, LogOut, Power, RefreshCw, Sparkles, TriangleAlert, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cloudApi, type CloudSignIn, type CloudStatus } from "~/api/models";
 import { useUi } from "~/app/store";
 import { Button } from "~/components/ui/Button";
 import { Badge, Spinner } from "~/components/ui/bits";
+import { ConfirmButton } from "~/components/ui/kit";
 import { desktop } from "~/shell/tauri";
 import { cx } from "~/lib/cx";
 
@@ -32,6 +33,32 @@ export function useCloudStatus(enabled = true): { status: CloudStatus | null; er
 export function CloudCard({ onChanged }: { onChanged: () => void }) {
   const { status, error, checking, refresh } = useCloudStatus();
   const [signingIn, setSigningIn] = useState(false);
+  const [busy, setBusy] = useState<"power" | "signout" | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [signedOut, setSignedOut] = useState<string | null>(null);
+
+  async function setEnabled(enabled: boolean) {
+    setBusy("power");
+    setNote(null);
+    try {
+      await cloudApi.setEnabled(enabled);
+      await refresh(true);
+      onChanged();
+    } catch (e) { setNote(errorText(e)); } finally { setBusy(null); }
+  }
+
+  async function signOut() {
+    setBusy("signout");
+    setNote(null);
+    try {
+      const r = await cloudApi.signOut();
+      setSignedOut(r.setupNext
+        ? "Signed out. Mercury is restarting and will ask you to connect a model."
+        : `Signed out. Mercury is restarting${r.fallback ? " with your other provider" : ""}…`);
+      // The runtime restarts; the app reconnects by itself. Refresh once it's back.
+      setTimeout(() => { setSignedOut(null); void refresh(true); onChanged(); }, 7000);
+    } catch (e) { setNote(errorText(e)); } finally { setBusy(null); }
+  }
   const connected = !!status && status.chat.ok;
   return (
     <div className={cx("flex flex-col gap-4 rounded-xl border p-4", status?.action === "sign-in" && status.paired ? "border-amber/50 bg-amber/[0.04]" : "border-accent/40 bg-accent/[0.04]")}>
@@ -43,13 +70,18 @@ export function CloudCard({ onChanged }: { onChanged: () => void }) {
             <Badge tone="cyan">recommended</Badge>
             {status?.isDefault && connected && <Badge tone="accent">default</Badge>}
             {status?.tier && status.paired && <Badge>{status.tier}</Badge>}
+            {status?.paired && !status.enabled && <Badge tone="amber">off</Badge>}
           </div>
           <p className="text-xs text-ink3">The quick start: sign in and chat. No API keys; models from every major lab on one account.</p>
         </div>
         <Button size="sm" variant="ghost" icon onClick={() => void refresh(true)} loading={checking} aria-label="Check Mercury Cloud now" title="Check now"><RefreshCw size={14} /></Button>
       </div>
 
-      {error && <p className="text-sm text-red">Couldn't check Mercury Cloud: {error}</p>}
+      {signedOut && <p className="flex items-center gap-2 text-sm text-ink2"><Spinner size={13} /> {signedOut}</p>}
+      {error && !signedOut && <p className="text-sm text-red">Couldn't check Mercury Cloud: {error}</p>}
+      {status?.paired && !status.enabled && !signedOut && (
+        <p className="text-sm text-ink3">Turned off: you're still signed in, but Mercury isn't using Cloud for chat.</p>
+      )}
       {!status && !error && <Spinner size={14} />}
 
       {status && (status.paired || status.chat.ok) && (
@@ -76,6 +108,19 @@ export function CloudCard({ onChanged }: { onChanged: () => void }) {
       ) : (status?.action === "sign-in" || !status?.paired) && status ? (
         <div><Button variant="primary" onClick={() => setSigningIn(true)}><LogIn size={14} /> {status.paired ? "Sign in again" : "Sign in to Mercury Cloud"}</Button></div>
       ) : null}
+
+      {status?.paired && !signingIn && !signedOut && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
+          {status.enabled
+            ? <Button size="sm" variant="ghost" loading={busy === "power"} onClick={() => void setEnabled(false)}><Power size={13} /> Turn off</Button>
+            : <Button size="sm" variant="primary" loading={busy === "power"} onClick={() => void setEnabled(true)}><Power size={13} /> Turn on</Button>}
+          <ConfirmButton size="sm" variant="ghost" confirmLabel="Sign out of Mercury Cloud?" loading={busy === "signout"} onConfirm={() => void signOut()}>
+            <LogOut size={13} /> Sign out
+          </ConfirmButton>
+          <span className="text-xs text-ink4">Signing out forgets the Cloud sign-in on this computer. Mercury restarts.</span>
+        </div>
+      )}
+      {note && <p className="text-sm text-red">{note}</p>}
 
       {status && status.chat.ok && !status.modelOk && !signingIn && (
         <p className="text-xs text-amber">The saved Mercury Cloud model ({status.model}) can't chat. Pick one under “Chat and tasks” below.</p>

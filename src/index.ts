@@ -97,6 +97,7 @@ import { clearCloudRuntimeOnline, markCloudRuntimeOnline } from './cloud/runtime
 import { startWebServer, stopWebServer, updateStatus as updateWebStatus, setUserMemory as setWebUserMemory, setWebChannel as setWebWebChannel, setScheduler as setWebScheduler, setAgentSupervisor as setWebSupervisor, setBackgroundTaskManager as setWebBgTasks, setSpotifyClient as setWebSpotify, setProgrammingMode as setWebProgrammingMode, setModelSwitchCallback as setWebModelSwitch, setCurrentProviderCallback as setWebCurrentProvider, setStatusSnapshotCallback as setWebStatusSnapshot, setKanbanSupervisor as setWebKanban, setKanbanBoardManager as setWebBoardManager, setKanbanProviders as setWebKanbanProviders, setIDEProviders as setWebIDEProviders, setSessionRepository as setWebSessions, setSessionSyncEnabledCallback as setWebSessionSyncEnabled, setBotManager as setWebBotManager, setBotsWebhookSecret, setShutdownHandler, setMcpManager as setWebMcpManager, setStopCallback as setWebStop } from './web/server.js';
 import { validateApiKey, validateBaseUrl, validateModelName } from './providers/provider-meta.js';
 import { setFirstProviderHandler, setProvidersReload } from './web/api/providers.js';
+import { setCloudReload } from './web/api/cloud.js';
 import { spawnDetachedRestart } from './cli/daemon.js';
 import { recordVoiceCalls } from './plugins/voice-calls.js';
 import { isWebAuthInitialized, setWebPassword, writeAttachToken, initWebAuth } from './web/auth.js';
@@ -3476,6 +3477,7 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
   setWebBgTasks(agent.backgroundTasks);
   setWebModelSwitch((provider, model) => agent.switchProvider(provider, model));
   setProvidersReload(() => agent.reloadProviders());
+  setCloudReload(() => agent.reloadProviders());
   setWebStop(() => agent.stopAllWork('stopped'));
   setWebCurrentProvider(() => agent.getCurrentProvider());
   // Live bottom bar for attached terminals and the dashboard: one snapshot,

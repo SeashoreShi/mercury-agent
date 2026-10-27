@@ -131,6 +131,10 @@ export const cloudApi = {
   startSignIn: () => http.post<CloudSignIn>("/api/cloud/signin"),
   signIn: () => http.get<CloudSignIn | { status: "none" }>("/api/cloud/signin"),
   cancelSignIn: () => http.delete<{ ok: boolean }>("/api/cloud/signin"),
+  /** Use Cloud for chat or not; you stay signed in either way. 409 when it's the only model. */
+  setEnabled: (enabled: boolean) => http.post<{ ok: boolean; enabled: boolean; default: string }>("/api/cloud/enabled", { enabled }),
+  /** Forget the Cloud sign-in on this computer; Mercury restarts. */
+  signOut: () => http.post<{ ok: boolean; restarting: boolean; fallback: string | null; setupNext: boolean }>("/api/cloud/signout"),
 };
 
 /** Dictation: GET tells whether a speech service is set up; POST sends raw audio and gets text back. */
