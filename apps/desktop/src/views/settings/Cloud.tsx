@@ -1,8 +1,7 @@
 import { CheckCircle2, CircleAlert, CircleDashed, ExternalLink, LogIn, RefreshCw, Sparkles, TriangleAlert, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { cloudApi, modelsApi, type CloudSignIn, type CloudStatus } from "~/api/models";
+import { cloudApi, type CloudSignIn, type CloudStatus } from "~/api/models";
 import { useUi } from "~/app/store";
-import { ModelPicker } from "~/components/ModelPicker";
 import { Button } from "~/components/ui/Button";
 import { Badge, Spinner } from "~/components/ui/bits";
 import { desktop } from "~/shell/tauri";
@@ -10,8 +9,8 @@ import { cx } from "~/lib/cx";
 
 /**
  * Mercury Cloud: the quick start (sign in, chat, no API keys). Always first.
- * Shows whether it really works right now (the chat key, the agent's live
- * session), and signs in again from the app when the session has expired.
+ * Only says whether it's signed in and working, and signs in again from the
+ * app; the model is chosen once, under "Chat and tasks".
  */
 
 function errorText(e: unknown): string {
@@ -33,23 +32,6 @@ export function useCloudStatus(enabled = true): { status: CloudStatus | null; er
 export function CloudCard({ onChanged }: { onChanged: () => void }) {
   const { status, error, checking, refresh } = useCloudStatus();
   const [signingIn, setSigningIn] = useState(false);
-  const [model, setModel] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
-  useEffect(() => { if (status) setModel(status.modelOk ? status.model : status.chat.models[0] ?? ""); }, [status?.model, status?.modelOk]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function saveModel(makeDefault: boolean) {
-    setSaving(true);
-    setNote(null);
-    try {
-      await modelsApi.save("mercuryCloud", { model, enabled: true });
-      if (makeDefault) await modelsApi.roles({ default: { provider: "mercuryCloud", model } });
-      setNote(makeDefault ? "Mercury Cloud is now the default." : "Saved.");
-      await refresh(true);
-      onChanged();
-    } catch (e) { setNote(errorText(e)); } finally { setSaving(false); }
-  }
-
   const connected = !!status && status.chat.ok;
   return (
     <div className={cx("flex flex-col gap-4 rounded-xl border p-4", status?.action === "sign-in" && status.paired ? "border-amber/50 bg-amber/[0.04]" : "border-accent/40 bg-accent/[0.04]")}>
@@ -95,16 +77,8 @@ export function CloudCard({ onChanged }: { onChanged: () => void }) {
         <div><Button variant="primary" onClick={() => setSigningIn(true)}><LogIn size={14} /> {status.paired ? "Sign in again" : "Sign in to Mercury Cloud"}</Button></div>
       ) : null}
 
-      {status && status.chat.ok && !signingIn && (
-        <div className="flex flex-col gap-2">
-          {!status.modelOk && <p className="text-xs text-amber">The saved model ({status.model}) can't chat or isn't on your plan. Pick one below.</p>}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="min-w-[240px] flex-1"><ModelPicker value={model} models={status.chat.models} onChange={setModel} /></div>
-            {(model !== status.model || !status.modelOk) && <Button size="md" variant="outline" loading={saving} disabled={!model} onClick={() => void saveModel(false)}>Save model</Button>}
-            {!status.isDefault && <Button size="md" variant="primary" loading={saving} disabled={!model} onClick={() => void saveModel(true)}>Make default</Button>}
-          </div>
-          {note && <p className="text-xs text-ink3">{note}</p>}
-        </div>
+      {status && status.chat.ok && !status.modelOk && !signingIn && (
+        <p className="text-xs text-amber">The saved Mercury Cloud model ({status.model}) can't chat. Pick one under “Chat and tasks” below.</p>
       )}
     </div>
   );
