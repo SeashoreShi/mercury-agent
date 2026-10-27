@@ -106,3 +106,29 @@ export function fieldApplies(f: VoiceField, values: Record<string, unknown>): bo
     return Array.isArray(want) ? want.includes(v) : v === String(want);
   }));
 }
+
+/** GET /api/cloud/status: is Mercury Cloud working, and what to do if not. */
+export interface CloudStatus {
+  paired: boolean;
+  enabled: boolean;
+  isDefault: boolean;
+  tier: string | null;
+  model: string;
+  modelOk: boolean;
+  chat: { ok: boolean; models: string[]; error: string | null };
+  /** The agent's live connection to Cloud. */
+  session: "online" | "offline" | "signed-out" | "off";
+  sessionError: string | null;
+  /** Has the long-lived key that renews an expired session by itself. */
+  selfRecovers: boolean;
+  action: "sign-in" | "pick-model" | null;
+  signin: CloudSignIn | null;
+}
+export interface CloudSignIn { code: string; pairingUrl: string; status: "pending" | "done" | "failed"; error: string | null; upgradeUrl: string | null }
+
+export const cloudApi = {
+  status: (fresh = false) => http.get<CloudStatus>(`/api/cloud/status${fresh ? "?fresh=1" : ""}`),
+  startSignIn: () => http.post<CloudSignIn>("/api/cloud/signin"),
+  signIn: () => http.get<CloudSignIn | { status: "none" }>("/api/cloud/signin"),
+  cancelSignIn: () => http.delete<{ ok: boolean }>("/api/cloud/signin"),
+};

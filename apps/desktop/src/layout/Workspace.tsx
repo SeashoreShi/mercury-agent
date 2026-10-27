@@ -18,6 +18,7 @@ import { SkillsView } from "~/views/skills/SkillsView";
 import { SettingsView } from "~/views/settings/SettingsView";
 import { BrainView } from "~/views/brain/BrainView";
 import { ErrorBoundary } from "~/components/ErrorBoundary";
+import { CloudBanner } from "~/views/settings/Cloud";
 
 registerBuiltinStatusItems();
 
@@ -43,6 +44,7 @@ export function Workspace({ connection, health, onSwitchConnection }: { connecti
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-bg">
       <EnvironmentBar connection={connection} health={health} />
+      <CloudBanner supported={!!health.features?.includes("cloud.signin")} />
       <div className="flex min-h-0 flex-1">
         <Rail connectionName={connection.name} />
         <main className="relative flex min-w-0 flex-1 flex-col">

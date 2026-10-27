@@ -5,6 +5,8 @@ import { Wordmark } from "~/components/Logo";
 import { Badge, Spinner } from "~/components/ui/bits";
 import { IconTile } from "~/components/ui/kit";
 import { ProviderEditor, errorText } from "~/views/settings/Models";
+import { CloudSignInFlow } from "~/views/settings/Cloud";
+import { Sparkles } from "lucide-react";
 
 /**
  * First run, after Mercury is installed: it can't think until a model is
@@ -19,6 +21,7 @@ export function FirstModel({ onReady, onSwitch }: { onReady: () => void; onSwitc
   const [picked, setPicked] = useState<ProviderInfo | null>(null);
   const [all, setAll] = useState(false);
   const [starting, setStarting] = useState<string | null>(null);
+  const [cloud, setCloud] = useState<"idle" | "signing-in" | null>("idle");
 
   useEffect(() => { modelsApi.settings().then(setData).catch((e) => setError(errorText(e))); }, []);
   // After the restart, reconnect; the workspace takes over once Mercury is up.
@@ -44,8 +47,24 @@ export function FirstModel({ onReady, onSwitch }: { onReady: () => void; onSwitc
         {error && !starting && <p className="text-center text-sm text-red">Couldn't reach Mercury: {error}</p>}
         {!data && !error && <div className="flex justify-center text-ink3"><Spinner size={18} /></div>}
 
+        {data && !starting && !picked && cloud && (
+          <div className="flex flex-col gap-3 rounded-xl border border-accent/40 bg-accent/[0.05] p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent"><Sparkles size={18} /></div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2"><span className="text-base font-medium text-ink">Mercury Cloud</span><Badge tone="cyan">recommended</Badge></div>
+                <div className="text-xs text-ink3">The quick start: sign in and chat. No API keys.</div>
+              </div>
+            </div>
+            {cloud === "signing-in"
+              ? <CloudSignInFlow onDone={() => setStarting("Mercury Cloud")} onCancel={() => setCloud("idle")} />
+              : <div><button onClick={() => setCloud("signing-in")} className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-accent/90">Sign in to Mercury Cloud</button></div>}
+          </div>
+        )}
+
         {data && !starting && !picked && (
           <div className="flex flex-col gap-2">
+            <div className="text-xs text-ink4">Or bring your own key</div>
             {featured.map((p) => <Choice key={p.id} p={p} onPick={() => setPicked(p)} />)}
             {all && others.map((p) => <Choice key={p.id} p={p} onPick={() => setPicked(p)} />)}
             {!all && <button className="self-center text-xs text-ink3 hover:text-ink hover:underline" onClick={() => setAll(true)}>More providers ({others.length})</button>}

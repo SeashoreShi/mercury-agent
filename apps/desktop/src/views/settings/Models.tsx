@@ -9,6 +9,7 @@ import { Field, Input } from "~/components/ui/Input";
 import { Badge, Spinner } from "~/components/ui/bits";
 import { ConfirmButton, IconTile } from "~/components/ui/kit";
 import { desktop } from "~/shell/tauri";
+import { CloudCard } from "./Cloud";
 import { cx } from "~/lib/cx";
 
 /**
@@ -45,8 +46,11 @@ export function ModelsSettings() {
   if (error) return <p className="text-sm text-red">Couldn't load providers: {error}</p>;
   if (!data) return <Spinner size={16} />;
 
-  const connected = data.providers.filter((p) => p.configured);
-  const rest = data.providers.filter((p) => !p.configured);
+  // Mercury Cloud has its own card, always first.
+  const others = data.providers.filter((p) => p.id !== "mercuryCloud");
+  const connected = others.filter((p) => p.configured);
+  const rest = others.filter((p) => !p.configured);
+  const anyConnected = data.providers.some((p) => p.configured);
 
   return (
     <section className="flex flex-col gap-6">
@@ -56,9 +60,11 @@ export function ModelsSettings() {
         </div>
       )}
 
-      {connected.length === 0
-        ? <EmptyState />
-        : <Defaults data={data} onSaved={(r) => saved(r, "Saved")} />}
+      <CloudCard onChanged={() => void load()} />
+
+      {anyConnected
+        ? <Defaults data={data} onSaved={(r) => saved(r, "Saved")} />
+        : <EmptyState />}
 
       {connected.length > 0 && (
         <div className="flex flex-col gap-2">
@@ -111,7 +117,7 @@ function EmptyState() {
       <TriangleAlert size={16} className="mt-0.5 shrink-0 text-amber" />
       <div className="text-sm text-ink2">
         <div className="font-medium text-ink">No model connected yet</div>
-        Mercury needs at least one. A gateway like AI/ML API gives you models from every major lab on one key; Ollama runs free models on this computer.
+        Mercury needs at least one. Mercury Cloud is the quickest: sign in, no keys. Or bring your own key below; Ollama runs free models on this computer.
       </div>
     </div>
   );

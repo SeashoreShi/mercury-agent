@@ -20,6 +20,10 @@ interface UiState {
   setVoiceOpen(open: boolean): void;
   sidebar: boolean;
   toggleSidebar(): void;
+  /** A Settings section to open next (e.g. "models" from the Cloud banner); Settings consumes it. */
+  settingsSection: string | null;
+  openSettings(section: string): void;
+  clearSettingsSection(): void;
 }
 
 export const useUi = create<UiState>((set) => ({
@@ -29,6 +33,9 @@ export const useUi = create<UiState>((set) => ({
   setVoiceOpen: (voiceOpen) => set({ voiceOpen }),
   sidebar: true,
   toggleSidebar: () => set((s) => ({ sidebar: !s.sidebar })),
+  settingsSection: null,
+  openSettings: (section) => set({ view: "settings", settingsSection: section }),
+  clearSettingsSection: () => set({ settingsSection: null }),
 }));
 
 interface RuntimeState {

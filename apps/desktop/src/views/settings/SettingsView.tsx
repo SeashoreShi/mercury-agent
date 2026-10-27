@@ -1,6 +1,7 @@
 import { Activity, Boxes, Info, Mic, PanelBottom, Palette, Power, Server, Smartphone, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cx } from "~/lib/cx";
+import { useUi } from "~/app/store";
 import * as api from "~/api/mercury";
 import type { DeviceSummary, HealthInfo } from "~/api/types";
 import { TINTS, useTheme, type ThemeMode } from "~/app/theme";
@@ -39,6 +40,13 @@ const SECTIONS: Array<{ id: Section; label: string; icon: typeof Palette }> = [
 
 export function SettingsView({ connection, health, onSwitchConnection }: { connection: Connection; health: HealthInfo; onSwitchConnection: () => void }) {
   const [section, setSection] = useState<Section>("appearance");
+  // Another screen asked for a section (the Cloud banner opens Models).
+  const wanted = useUi((s) => s.settingsSection);
+  const clearWanted = useUi((s) => s.clearSettingsSection);
+  useEffect(() => {
+    if (wanted && SECTIONS.some((x) => x.id === wanted)) setSection(wanted as Section);
+    if (wanted) clearWanted();
+  }, [wanted, clearWanted]);
   return (
     <div className="flex h-full min-h-0">
       <aside className="flex w-[240px] shrink-0 flex-col border-r border-line bg-soft">
