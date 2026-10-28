@@ -1063,8 +1063,28 @@ export class Agent {
 
   queueMessage(message: ChannelMessage, workKey?: string): void {
     if (workKey && this.queuedWorkKeys.has(workKey)) return;
-    this.messageQueue.push({ message, workKey });
+    // Someone is waiting on the line: a question asked on a call goes ahead
+    // of queued chat work (behind earlier call questions, in order).
+    if (message.metadata?.voiceCall === true) {
+      let at = 0;
+      while (at < this.messageQueue.length && this.messageQueue[at].message.metadata?.voiceCall === true) at++;
+      this.messageQueue.splice(at, 0, { message, workKey });
+    } else {
+      this.messageQueue.push({ message, workKey });
+    }
     if (workKey) this.queuedWorkKeys.add(workKey);
+  }
+
+  /**
+   * Where work for one channel stands: running now, waiting in the queue,
+   * or neither; and what Mercury is busy with when it's something else.
+   */
+  workStateFor(channelId: string): { state: 'running' | 'queued' | 'none'; busyWith?: string } {
+    const current = this.currentMessage?.channelId;
+    if (this.processing && current === channelId) return { state: 'running' };
+    const busyWith = this.processing && current ? (this.currentActivity || 'another task').replace(/^\W+/u, '').trim() || 'another task' : undefined;
+    if (this.messageQueue.some((i) => i.message.channelId === channelId)) return { state: 'queued', busyWith };
+    return { state: 'none', busyWith };
   }
 
   private async handleDuplicateWork(entry: WorkEntry): Promise<void> {
@@ -4805,9 +4825,15 @@ export class Agent {
    * queued for it. Other chats keep going. Returns whether anything stopped.
    */
   stopWorkFor(channelPrefix: string, reason = 'Stopped by the owner.'): boolean {
-    const before = this.messageQueue.length;
+    const dropped = this.messageQueue.filter((i) => i.message.channelId.startsWith(channelPrefix));
     this.messageQueue = this.messageQueue.filter((i) => !i.message.channelId.startsWith(channelPrefix));
-    let stopped = this.messageQueue.length !== before;
+    // Never started: cancel them, or a restart would run them after all.
+    for (const item of dropped) {
+      if (!item.workKey) continue;
+      this.queuedWorkKeys.delete(item.workKey);
+      try { this.workLedger.markCancelled(item.workKey, reason); } catch { /* entry may not exist */ }
+    }
+    let stopped = dropped.length > 0;
     if (this.currentMessage?.channelId.startsWith(channelPrefix) && this.currentAbort && !this.currentAbort.signal.aborted) {
       this.currentAbortReason = 'stopped';
       this.currentAbort.abort();

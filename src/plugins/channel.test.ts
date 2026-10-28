@@ -7,7 +7,7 @@ import type { Channel } from '../channels/base.js';
 import type { ChannelMessage } from '../types/channel.js';
 import { PluginManager, setProviderLookup } from './manager.js';
 import { PluginChannel } from './channel-bridge.js';
-import { activityLabel, getPluginChannel, setCallLearning, setChannelHost, setDesktopActivityHook, setVoiceBriefing, setWorkStopper, splitMessage, spokenPart, toWhatsAppText, voiceBriefing } from './channel-bridge.js';
+import { activityLabel, getPluginChannel, setCallLearning, setChannelHost, setDesktopActivityHook, setVoiceBriefing, setWorkProbe, setWorkStopper, splitMessage, spokenPart, toWhatsAppText, voiceBriefing } from './channel-bridge.js';
 import { getPluginTools, resetToolBridge } from './tool-bridge.js';
 import { pluginDataDir } from './store.js';
 import { manifestSchema } from './types.js';
@@ -577,6 +577,54 @@ describe('plugin channels (plugin API 1.1)', () => {
         expect(r.find((x) => 'stopped' in (x.result ?? {}))?.result.stopped).toBe(true);
         expect(stoppedFor).toEqual(['desktop:call:s1']);
         expect(await approval).toBe('no');
+      } finally {
+        setWorkStopper(null);
+      }
+    });
+
+    it('a question stuck behind other work says so early, and the answer goes to the chat', async () => {
+      setWorkProbe(() => ({ state: 'queued', busyWith: 'Rendering the promo video' }), 60);
+      try {
+        const ch = await installDesktop();
+        await callsim('mercury/call/ask', { callId: 'q1', question: 'Search Twitter for Mercury' });
+        await waitFor(() => lines('replies.jsonl').length === 1);
+        expect(lines('replies.jsonl')[0].result.answer).toMatch(/hasn't started that yet[\s\S]*Rendering the promo video[\s\S]*Mercury chat/);
+        await ch.send('Found 12 mentions.', 'desktop:call:q1');
+        expect(notices.some((n) => /From your call[\s\S]*12 mentions/.test(n))).toBe(true);
+      } finally {
+        setWorkProbe(null);
+      }
+    });
+
+    it('a question already running is left to finish', async () => {
+      setWorkProbe(() => ({ state: 'running' }), 30);
+      try {
+        const ch = await installDesktop();
+        await callsim('mercury/call/ask', { callId: 'q2', question: 'Open Gmail' });
+        await waitFor(() => received.length === 1);
+        await sleep(120);
+        expect(lines('replies.jsonl')).toEqual([]);
+        await ch.send('Gmail is open.', 'desktop:call:q2');
+        ch.endTask('desktop:call:q2');
+        await waitFor(() => lines('replies.jsonl').length === 1);
+        expect(lines('replies.jsonl')[0].result.answer).toBe('Gmail is open.');
+      } finally {
+        setWorkProbe(null);
+      }
+    });
+
+    it('when the session ends, the work it started stops (unless promised to the chat)', async () => {
+      const stoppedFor: string[] = [];
+      setWorkStopper((prefix) => { stoppedFor.push(prefix); return true; });
+      try {
+        await installDesktop();
+        await callsim('mercury/call/ask', { callId: 'e1', question: 'Check my calendar' });
+        await waitFor(() => received.length === 1);
+        const end = getPluginTools(new PermissionManager())['optimus__callend'] as Tool & { execute: (a: unknown, o: unknown) => Promise<unknown> };
+        await end.execute({ callId: 'e1', direction: 'incoming', outcome: 'completed', durationSec: 20, transcript: [] }, { toolCallId: 't', messages: [] });
+        await waitFor(() => lines('replies.jsonl').length === 1);
+        expect(lines('replies.jsonl')[0].result.answer).toBe('(the call ended)');
+        expect(stoppedFor).toEqual(['desktop:call:e1']);
       } finally {
         setWorkStopper(null);
       }

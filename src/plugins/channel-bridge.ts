@@ -365,20 +365,35 @@ export class PluginChannel extends BaseChannel {
         clearTimeout(previous.timer);
         previous.resolve('(superseded by a newer question)');
       }
-      const giveUp = () => {
+      const chat = this.desktop ? 'your Mercury chat' : 'WhatsApp';
+      const channelId = `${this.type}:${target}`;
+      const giveUp = (message: string) => {
+        this.callAsks.delete(target);
+        this.overflow.add(target);
+        resolve(message);
+      };
+      const tooLong = () => {
         // Waiting on the owner's approval isn't "stuck": keep the question open.
         if ([...this.callApprovals.values()].some((a) => a.callId === callId)) {
           const entry = this.callAsks.get(target);
-          if (entry) entry.timer = setTimeout(giveUp, 30_000);
+          if (entry) entry.timer = setTimeout(tooLong, 30_000);
           return;
         }
-        this.callAsks.delete(target);
-        this.overflow.add(target);
-        resolve(this.desktop
-          ? 'Mercury is still working on that. It will send the answer to your Mercury chat when it\'s done.'
-          : 'Mercury is still working on that. It will send the answer to WhatsApp when it\'s done.');
+        const work = workProbe?.(channelId);
+        giveUp(work?.state === 'queued'
+          ? `Mercury hasn't started that yet: it's still busy with another task (${work.busyWith ?? 'another task'}). Your question is next, and the answer will go to ${chat}.`
+          : `Mercury is still working on that. It will send the answer to ${chat} when it's done.`);
       };
-      const timer = setTimeout(giveUp, 90_000);
+      // Stuck behind other work: say so early, instead of a long silence.
+      const behind = () => {
+        const work = workProbe?.(channelId);
+        const entry = this.callAsks.get(target);
+        if (work?.state !== 'queued' || entry?.resolve !== resolve) return;
+        clearTimeout(entry.timer);
+        giveUp(`Mercury hasn't started that yet: it's busy finishing another task (${work.busyWith ?? 'another task'}). Your question is next in line, and the answer will go to ${chat}.`);
+      };
+      const timer = setTimeout(tooLong, 90_000);
+      setTimeout(behind, behindMs);
       this.callAsks.set(target, { chunks: [], resolve, timer });
       const files = this.activeCalls.get(callId)?.files ?? [];
       const sentNote = files.length
@@ -432,7 +447,20 @@ export class PluginChannel extends BaseChannel {
         try { learnFromCall(said.slice(0, 6000), replied.slice(0, 6000)); } catch { /* best effort */ }
       }
     }
-    this.activeCalls.delete(String(p.callId ?? ''));
+    const endedId = String(p.callId ?? '');
+    this.activeCalls.delete(endedId);
+    // Nobody is on the line any more: end the work the call started, unless
+    // its answer was already promised to the chat.
+    const target = `call:${endedId}`;
+    if (endedId && !this.overflow.has(target)) {
+      workStopper?.(`${this.type}:${target}`);
+      const ask = this.callAsks.get(target);
+      if (ask) {
+        clearTimeout(ask.timer);
+        this.callAsks.delete(target);
+        ask.resolve('(the call ended)');
+      }
+    }
     if (this.desktop) voiceFeed.ended(String(p.callId ?? ''), String(p.outcome ?? 'ended'));
     for (const [id, a] of this.callApprovals) if (a.callId === String(p.callId ?? '')) this.resolveCallApproval(id, 'no', 'timeout');
     const secs = typeof p.durationSec === 'number' ? Math.round(p.durationSec) : 0;
@@ -852,6 +880,15 @@ let workStopper: ((channelPrefix: string) => boolean) | null = null;
 /** How a call's "stop" ends the Mercury work it started (agent.stopWorkFor). */
 export function setWorkStopper(fn: ((channelPrefix: string) => boolean) | null): void {
   workStopper = fn;
+}
+
+let workProbe: ((channelId: string) => { state: 'running' | 'queued' | 'none'; busyWith?: string }) | null = null;
+/** Where a call question's work stands (agent.workStateFor), to explain a wait honestly. */
+/** A call question still not started after this long is waiting behind other work. */
+let behindMs = 12_000;
+export function setWorkProbe(fn: typeof workProbe, waitMs = 12_000): void {
+  workProbe = fn;
+  behindMs = waitMs;
 }
 
 let desktopActivityHook: ((label: string | null) => void) | null = null;
