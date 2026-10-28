@@ -33,7 +33,7 @@
         "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src": "'self' data: https://fonts.gstatic.com",
         "img-src": "'self' data: blob: asset: http://asset.localhost http: https:",
-        "media-src": "'self' blob: http: https:",
+        "media-src": "'self' blob: data: http: https:",
         "connect-src": "'self' ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:* http: https: ws: wss:",
         "worker-src": "'self' blob:",
         "frame-src": "'none'",

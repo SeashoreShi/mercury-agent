@@ -45,6 +45,7 @@ export const API_FEATURES: readonly string[] = Object.freeze([
   'chat.plan',         // SSE 'plan' { steps, updatedAt } + GET /api/chat/plan?sessionId= (the plan checklist)
   'channels',          // GET /api/channels, POST :type/check, PUT :type, POST :type/access, POST/GET signal/link
   'transcribe',        // GET/POST /api/transcribe — dictation: raw audio in, text out
+  'speak',             // GET/POST /api/speak — read aloud: text in, MP3 out
   'cloud.signin',      // GET /api/cloud/status, POST/GET/DELETE /api/cloud/signin (browser pairing from any client)       // POST /api/voice/check { vendor, key?, endpoint? }
   'brain.map',         // GET /api/brain/map[?archive=1] — themes, sub-themes, notes, related links
 ]);

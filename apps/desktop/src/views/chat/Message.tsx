@@ -12,6 +12,7 @@ import { isStopNote } from "~/app/events";
 import { UserAvatar, useDisplayName } from "~/components/UserAvatar";
 import { usePulse } from "~/app/pulse";
 import { ArtifactStrip } from "~/components/artifacts/ArtifactCard";
+import { ReadAloudButton, ReadAloudNotice, useReadingThis } from "~/components/readAloud/ReadAloud";
 
 /**
  * One entry in a conversation. Each kind the runtime stores gets its own
@@ -69,7 +70,8 @@ export const Message = memo(function Message({ message }: { message: ChatMessage
         {body && <Markdown text={body} />}
         {stopped && <StoppedMarker partial={!!body} />}
         {message.artifacts && message.artifacts.length > 0 && <ArtifactStrip items={message.artifacts} />}
-        <MessageMeta timestamp={message.timestamp} copy={body || undefined} />
+        <MessageMeta timestamp={message.timestamp} copy={body || undefined} listen={body ? { id: message.id, text: body } : undefined} />
+        <ReadAloudNotice id={message.id} />
       </div>
     </div>
   );
@@ -97,11 +99,12 @@ function Speaker({ who }: { who: "you" | "mercury" }) {
 }
 
 /** Time and copy, shown on hover so the conversation stays quiet. */
-function MessageMeta({ timestamp, copy, align = "start" }: { timestamp: string; copy?: string; align?: "start" | "end" }) {
+function MessageMeta({ timestamp, copy, listen, align = "start" }: { timestamp: string; copy?: string; listen?: { id: string; text: string }; align?: "start" | "end" }) {
   const [copied, setCopied] = useState(false);
+  const reading = useReadingThis(listen?.id ?? "");
   const time = formatTime(timestamp);
   return (
-    <div className={cx("-mb-2 flex h-6 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100", align === "end" ? "mt-0 flex-row-reverse" : "mt-2")}>
+    <div className={cx("-mb-2 flex h-6 items-center gap-1 transition-opacity group-hover:opacity-100 focus-within:opacity-100", reading ? "opacity-100" : "opacity-0", align === "end" ? "mt-0 flex-row-reverse" : "mt-2")}>
       {copy && (
         <button
           onClick={() => { void navigator.clipboard.writeText(copy).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200); }); }}
@@ -112,6 +115,7 @@ function MessageMeta({ timestamp, copy, align = "start" }: { timestamp: string; 
           {copied ? "Copied" : "Copy"}
         </button>
       )}
+      {listen && <ReadAloudButton id={listen.id} text={listen.text} />}
       {time && <span className="px-1.5 text-xs text-ink4">{time}</span>}
     </div>
   );

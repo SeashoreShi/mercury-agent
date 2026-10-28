@@ -1,4 +1,4 @@
-import { http, request } from "./client";
+import { ApiError, apiUrl, authHeaders, http, request } from "./client";
 import type { PluginItem } from "./types";
 
 /** Model providers and gateways (GET/POST /api/providers*), voice key checks, and Optimus voice settings. */
@@ -138,6 +138,24 @@ export const cloudApi = {
 };
 
 /** Dictation: GET tells whether a speech service is set up; POST sends raw audio and gets text back. */
+export const speakApi = {
+  status: () => http.get<{ available: boolean; engine: string | null; maxChars: number }>("/api/speak"),
+  /** MP3 for one part of a reply (at most `maxChars`). */
+  audio: async (text: string, signal?: AbortSignal): Promise<Blob> => {
+    const res = await fetch(apiUrl("/api/speak"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "audio/mpeg, application/json", ...authHeaders() },
+      body: JSON.stringify({ text }),
+      signal,
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string } & Record<string, unknown>;
+      throw new ApiError(body.error || `Request failed (${res.status})`, res.status, null, body);
+    }
+    return res.blob();
+  },
+};
+
 export const transcribeApi = {
   status: () => http.get<{ available: boolean; engine: string | null }>("/api/transcribe"),
   send: (audio: Blob, language?: string) =>
