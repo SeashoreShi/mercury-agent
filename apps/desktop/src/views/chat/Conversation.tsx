@@ -35,6 +35,8 @@ export function Conversation({ header, empty, composer }: { header: ReactNode; e
 
   useEffect(() => { setVisible(PAGE); stickToBottom.current = true; }, [activeId]);
   const shown = messages.length > visible ? messages.slice(messages.length - visible) : messages;
+  // Only your last message can be undone.
+  const lastYours = [...messages].reverse().find((m) => m.role === "user")?.id;
   const hiddenCount = messages.length - shown.length;
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -84,7 +86,7 @@ export function Conversation({ header, empty, composer }: { header: ReactNode; e
                 {hiddenCount} earlier message{hiddenCount === 1 ? "" : "s"}
               </button>
             )}
-            {shown.map((m) => <Message key={m.id} message={m} />)}
+            {shown.map((m) => <Message key={m.id} message={m} undoable={m.id === lastYours} />)}
             {(streaming || (live && (agent === "thinking" || agent === "working" || agent === "streaming" || agent === "needs-you"))) && (
               <StreamingMessage text={streaming} live={live} stopping={stopping} />
             )}

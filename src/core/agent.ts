@@ -1075,6 +1075,13 @@ export class Agent {
     if (workKey) this.queuedWorkKeys.add(workKey);
   }
 
+  /** Is a turn for this session running, or waiting in the queue? */
+  isBusyWith(sessionId: string): boolean {
+    const of = (m: ChannelMessage | null | undefined) => m?.sessionId ?? (typeof m?.metadata?.sessionId === 'string' ? m.metadata.sessionId : undefined);
+    if (this.processing && of(this.currentMessage) === sessionId) return true;
+    return this.messageQueue.some((i) => of(i.message) === sessionId);
+  }
+
   /**
    * Where work for one channel stands: running now, waiting in the queue,
    * or neither; and what Mercury is busy with when it's something else.

@@ -83,6 +83,15 @@ export function Composer({ surface, placeholder, code, extra, blockedReason, mon
     return () => window.removeEventListener("keydown", onKey, true);
   }, [recording]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // An undone message comes back here, in place of what was typed.
+  const undone = useConversation((s) => s.draft);
+  useEffect(() => {
+    if (undone == null) return;
+    setText(undone);
+    convStore.getState().setDraft(null);
+    requestAnimationFrame(() => { const el = ref.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } });
+  }, [undone, convStore]);
+
   useEffect(() => {
     if (draft == null) return;
     setText(draft);

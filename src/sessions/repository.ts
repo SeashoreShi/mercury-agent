@@ -220,6 +220,22 @@ export class SessionRepository {
     return message;
   }
 
+  /**
+   * Take back a message and everything after it (undo the last exchange):
+   * it leaves the history the agent reads, so Mercury forgets it too.
+   * Returns what was removed, oldest first.
+   */
+  removeFrom(sessionRef: string, messageId: string): SessionMessage[] {
+    const session = this.get(sessionRef);
+    const at = session.messages.findIndex((message) => message.id === messageId.toLowerCase());
+    if (at < 0) throw new Error('Message not found in this session');
+    const removed = session.messages.splice(at);
+    this.touchAndWrite(session);
+    this.writeIndex();
+    this.notifyMutation();
+    return removed;
+  }
+
   updateTitle(ref: string, title: string, titleSource: Session['titleSource'] = 'user'): Session {
     const normalized = title.replace(/\s+/g, ' ').trim();
     if (!normalized) throw new Error('Session title is required');

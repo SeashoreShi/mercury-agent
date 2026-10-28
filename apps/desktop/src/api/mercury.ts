@@ -53,6 +53,8 @@ export const chat = {
     http.post<{ sent: boolean; sessionId: string }>("/api/chat/send", { content, sessionId, ...(attachments?.length ? { attachments } : {}), ...(code ?? {}) }),
   /** Interrupt the running turn (same as /stop). Needs the "chat.stop" feature. */
   stop: () => http.post<{ ok: boolean; note?: string }>("/api/chat/stop", {}),
+  /** Take back your last message and the reply (stop the turn first); returns your text. */
+  undo: (threadId: string, content: string) => http.post<{ ok: boolean; content: string; removed: number }>(`/api/chat/threads/${encodeURIComponent(threadId)}/undo`, { content }),
   answer: (promptId: string, action: string, targetId?: string) => http.post<{ resolved: boolean }>(`/api/chat/permission/${encodeURIComponent(promptId)}`, { action, targetId }),
   settings: () => http.get<ChatSettings>("/api/chat/settings"),
   updateSettings: (patch: Partial<ChatSettings>) => http.put<ChatSettings>("/api/chat/settings", patch),

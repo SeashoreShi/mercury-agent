@@ -12,6 +12,7 @@ import { isStopNote } from "~/app/events";
 import { UserAvatar, useDisplayName } from "~/components/UserAvatar";
 import { usePulse } from "~/app/pulse";
 import { ArtifactStrip } from "~/components/artifacts/ArtifactCard";
+import { UndoMessage } from "./UndoMessage";
 import { ReadAloudButton, ReadAloudNotice, useReadingThis } from "~/components/readAloud/ReadAloud";
 
 /**
@@ -22,7 +23,7 @@ import { ReadAloudButton, ReadAloudNotice, useReadingThis } from "~/components/r
  *  - tool-call     a collapsed "used N tools" row; open it for each call
  *  - system        a muted note
  */
-export const Message = memo(function Message({ message }: { message: ChatMessage }) {
+export const Message = memo(function Message({ message, undoable = false }: { message: ChatMessage; undoable?: boolean }) {
   const you = useDisplayName();
   if (message.role === "user") {
     const files = message.attachments ?? [];
@@ -37,7 +38,7 @@ export const Message = memo(function Message({ message }: { message: ChatMessage
               {text}
             </p>
           )}
-          <MessageMeta timestamp={message.timestamp} copy={text || undefined} align="end" />
+          <MessageMeta timestamp={message.timestamp} copy={text || undefined} align="end" undo={undoable ? message : undefined} />
         </div>
         <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center" title={you} aria-hidden="true"><UserAvatar size={26} /></span>
       </div>
@@ -99,7 +100,7 @@ function Speaker({ who }: { who: "you" | "mercury" }) {
 }
 
 /** Time and copy, shown on hover so the conversation stays quiet. */
-function MessageMeta({ timestamp, copy, listen, align = "start" }: { timestamp: string; copy?: string; listen?: { id: string; text: string }; align?: "start" | "end" }) {
+function MessageMeta({ timestamp, copy, listen, undo, align = "start" }: { timestamp: string; copy?: string; listen?: { id: string; text: string }; undo?: ChatMessage; align?: "start" | "end" }) {
   const [copied, setCopied] = useState(false);
   const reading = useReadingThis(listen?.id ?? "");
   const time = formatTime(timestamp);
@@ -116,6 +117,7 @@ function MessageMeta({ timestamp, copy, listen, align = "start" }: { timestamp: 
         </button>
       )}
       {listen && <ReadAloudButton id={listen.id} text={listen.text} />}
+      {undo && <UndoMessage message={undo} />}
       {time && <span className="px-1.5 text-xs text-ink4">{time}</span>}
     </div>
   );

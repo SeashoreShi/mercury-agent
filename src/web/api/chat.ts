@@ -70,6 +70,11 @@ export function setCurrentProviderCallback(fn: () => { name: string; model: stri
 }
 
 let stopFn: (() => Promise<string>) | null = null;
+let busyFn: ((sessionId: string) => boolean) | null = null;
+/** Whether a session has a turn running or queued (undo waits for it). */
+export function setSessionBusyLookup(fn: ((sessionId: string) => boolean) | null): void {
+  busyFn = fn;
+}
 /** The same stop the terminal's Esc and `/stop` use: abort the running turn, cancel its work entry. */
 export function setStopCallback(fn: () => Promise<string>): void {
   stopFn = fn;
@@ -728,6 +733,30 @@ chat.post('/api/chat/threads/:id/delete', async (c) => {
   } catch {
     return c.json({ deleted: false, error: 'Thread not found' }, 404);
   }
+});
+
+/**
+ * Undo: take back your last message and Mercury's reply to it, so you can
+ * change it. Only the last message you sent, and only once its turn has
+ * ended (stop it first). Returns what you wrote, to put back in the box.
+ */
+chat.post('/api/chat/threads/:id/undo', async (c) => {
+  const id = c.req.param('id');
+  if (!sessions) return c.json({ error: 'Session repository not initialized' }, 503);
+  // Which message the client means: its id, or (for a message the client
+  // showed before the runtime saved it) its text. Either must be the last one.
+  const body: { messageId?: string; content?: string } = await c.req.json<{ messageId?: string; content?: string }>().catch(() => ({}));
+  let session;
+  try { session = sessions.get(id); } catch { return c.json({ error: 'Thread not found' }, 404); }
+  if (busyFn?.(session.id)) return c.json({ error: 'Mercury is still working on this. Stop it first.', busy: true }, 409);
+  const last = [...session.messages].reverse().find((m) => m.role === 'user' && (m.kind ?? 'message') === 'message');
+  if (!last) return c.json({ error: 'There is nothing to undo.' }, 409);
+  const notLast = (body.messageId && body.messageId.toLowerCase() !== last.id)
+    || (typeof body.content === 'string' && body.content.trim() !== last.content.trim());
+  if (notLast) return c.json({ error: 'Only your last message can be undone.', notLast: true }, 409);
+  const removed = sessions.removeFrom(session.id, last.id);
+  const attachments = (last.metadata as { attachments?: unknown } | undefined)?.attachments;
+  return c.json({ ok: true, content: last.content, attachments: Array.isArray(attachments) ? attachments : [], removed: removed.length });
 });
 
 chat.post('/api/chat/threads/:id/messages', async (c) => {

@@ -26,6 +26,9 @@ export interface ConversationState {
   /** The stop button was pressed and the runtime hasn't confirmed yet. */
   stopping: boolean;
   setStopping(stopping: boolean): void;
+  /** Text to put in the box (an undone message); the composer takes it once. */
+  draft: string | null;
+  setDraft(draft: string | null): void;
   /** The conversation's plan checklist (update_plan), if Mercury made one. */
   plan: { steps: Array<{ label: string; status: "pending" | "active" | "done" }>; updatedAt: number } | null;
   setPlan(plan: ConversationState["plan"]): void;
@@ -58,6 +61,8 @@ function makeConversation(surface: Surface): ConversationStore {
     live: null,
     stopping: false,
     setStopping: (stopping) => set({ stopping }),
+    draft: null,
+    setDraft: (draft) => set({ draft }),
     plan: null,
     setPlan: (plan) => set({ plan }),
     setLive: (update) => set((s) => ({ live: update(s.live ?? { reasoning: "", steps: [], startedAt: Date.now() }) })),

@@ -8,7 +8,7 @@
 import { useEffect } from "react";
 import { openStream } from "~/api/stream";
 import * as api from "~/api/mercury";
-import { http } from "~/api/client";
+import { ApiError, http } from "~/api/client";
 import type { BotActivityEvent, ChatMessage, CodeMode, PendingPrompt } from "~/api/types";
 import { useBots, useChat, useRuntimeState, type AgentState } from "./store";
 import { conversations, useCodeSessions, type ConversationStore, type Surface } from "./conversation";
@@ -311,6 +311,45 @@ export async function stopTurn(store: ConversationStore): Promise<void> {
     throw err;
   }
   setTimeout(() => { if (store.getState().stopping) finishStopped(store); }, 8000);
+}
+
+/** Is Mercury working on this conversation right now (or still stopping)? */
+export function turnRunning(store: ConversationStore): boolean {
+  const s = store.getState();
+  return s.stopping || !!s.streaming || (s.agent !== "idle" && s.agent !== "offline");
+}
+
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Undo your last message: stop the turn if it's running (and wait for it
+ * to end), take the message and Mercury's reply out of the conversation
+ * (the runtime forgets them too), and put your text back in the box.
+ */
+export async function undoLast(store: ConversationStore, message: ChatMessage): Promise<void> {
+  const threadId = store.getState().activeId;
+  if (!threadId) throw new Error("No conversation is open.");
+  if (turnRunning(store)) {
+    await stopTurn(store);
+    for (let waited = 0; turnRunning(store) && waited < 12_000; waited += 150) await pause(150);
+  }
+  // The runtime may still be writing the stopped turn: give it a moment.
+  let result: Awaited<ReturnType<typeof api.chat.undo>> | null = null;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      result = await api.chat.undo(threadId, message.content);
+      break;
+    } catch (err) {
+      const busy = err instanceof ApiError && err.status === 409 && err.data.busy === true;
+      if (!busy || attempt >= 25) throw err;
+      await pause(400);
+    }
+  }
+  const s = store.getState();
+  if (s.activeId !== threadId) return;
+  const at = s.messages.findIndex((m) => m.id === message.id);
+  s.setMessages(at >= 0 ? s.messages.slice(0, at) : s.messages);
+  s.setDraft(result.content);
 }
 
 /** End the current turn as stopped: keep the partial answer, mark the trace, say so. */
