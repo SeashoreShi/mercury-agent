@@ -10,6 +10,7 @@ import { InstallRuntime } from "./InstallRuntime";
 import { desktop, type LocalRuntime } from "./tauri";
 import { LOCAL_CONNECTION_ID, useConnections } from "./connections";
 import { checkCompat } from "./compat";
+import { updateLocalRuntime } from "./updateLocal";
 
 /**
  * First run: where should Mercury run? Three short cards, one action each.
@@ -58,10 +59,10 @@ export function Onboarding({ onDone, canCancel }: { onDone: () => void; canCance
     await setActive(LOCAL_CONNECTION_ID);
     onDone();
   });
+  // Install the runtime this app is built for and restart onto it
+  // (`mercury upgrade` only knows stable, and a running copy keeps old code).
   const upgradeLocal = () => run("upgrade", async () => {
-    const out = await desktop.runMercury(["upgrade"]);
-    if (out.code !== 0) throw new Error(firstLine(out.stderr || out.stdout) || `mercury upgrade exited with ${out.code}`);
-    await new Promise((r) => setTimeout(r, 4000));
+    await updateLocalRuntime();
     await probe();
   });
   const startLocal = () => run("start", async () => {
@@ -94,13 +95,13 @@ export function Onboarding({ onDone, canCancel }: { onDone: () => void; canCance
               <CardTitle>Use the Mercury here</CardTitle>
               {local.state === "probing" && <CardBody>Looking for a running Mercury…</CardBody>}
               {local.state === "running" && <CardBody>Mercury {version} is running{local.runtime.serviceInstalled ? " as a service" : ""}. The app attaches to it; nothing moves.</CardBody>}
-              {local.state === "outdated" && <CardBody>Mercury {version} is running, but it predates the desktop API (needs 1.5 or newer). Upgrade it and the app attaches.</CardBody>}
+              {local.state === "outdated" && <CardBody>Mercury {version} is running, but it's older than this app. Update it here: the app installs the matching version and restarts Mercury.</CardBody>}
               {local.state === "installed" && <CardBody>Mercury {version} is installed but not running.</CardBody>}
               {local.state === "missing" && <CardBody>No Mercury on {platform} yet.</CardBody>}
               {found && <Mono className="block truncate">127.0.0.1:{local.runtime.port} · API v{local.health.apiVersion ?? 0} · pid {local.health.pid}</Mono>}
               <div className="flex-1" />
               {local.state === "running" && <Button variant="primary" size="lg" loading={busy === "local"} onClick={() => void useLocal()}>Connect</Button>}
-              {local.state === "outdated" && <Button variant="primary" size="lg" loading={busy === "upgrade"} onClick={() => void upgradeLocal()}>Upgrade Mercury</Button>}
+              {local.state === "outdated" && <Button variant="primary" size="lg" loading={busy === "upgrade"} onClick={() => void upgradeLocal()}>Update Mercury</Button>}
               {local.state === "installed" && <Button variant="primary" size="lg" loading={busy === "start"} onClick={() => void startLocal()}>Start Mercury</Button>}
               {(local.state === "missing" || local.state === "probing") && <Button variant="outline" size="lg" disabled={local.state === "probing"} onClick={() => void probe()}>Check again</Button>}
             </Card>

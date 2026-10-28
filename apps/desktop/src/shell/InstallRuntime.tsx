@@ -6,6 +6,7 @@ import { Switch } from "~/components/ui/Switch";
 import { Mono } from "~/components/ui/bits";
 import { desktop, isTauri, type InstallProgress } from "./tauri";
 import { LOCAL_CONNECTION_ID, useConnections } from "./connections";
+import { localIsOutdated, restartLocalRuntime } from "./updateLocal";
 
 /**
  * "Install Mercury here": download the matching release, verify it, put it
@@ -57,6 +58,9 @@ export function InstallRuntime({ platform, onInstalled }: { platform: string; on
       if (!(await isUp(baseUrl))) {
         const start = await desktop.runMercury(["start"]);
         if (start.code !== 0) throw new Error(firstLine(start.stderr || start.stdout) || "mercury start failed");
+      } else if (await localIsOutdated(runtime.port)) {
+        // An older Mercury was already running: it would keep running the old code.
+        await restartLocalRuntime();
       }
       const deadline = Date.now() + 30_000;
       while (!(await isUp(baseUrl))) {

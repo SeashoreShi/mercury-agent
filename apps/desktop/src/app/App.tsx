@@ -8,6 +8,7 @@ import { Workspace } from "~/layout/Workspace";
 import { Wordmark } from "~/components/Logo";
 import { Button } from "~/components/ui/Button";
 import { desktop } from "~/shell/tauri";
+import { updateLocalRuntime } from "~/shell/updateLocal";
 import { configureApi } from "~/api/client";
 import { useRuntimeState } from "./store";
 
@@ -84,10 +85,13 @@ function Connected({ connection, onSwitch }: { connection: Connection; onSwitch:
             <p className="text-sm text-ink3">
               {status.compat.reason === "desktop-too-old"
                 ? `Mercury ${status.health.version} speaks a newer API (v${status.compat.apiVersion}) than this app. Update Mercury Desktop, or open the dashboard in your browser.`
-                : `Mercury ${status.health.version || "(unknown)"} on ${connection.name} is older than this app supports. Run \`mercury upgrade\` there.`}
+                : connection.kind === "local"
+                  ? `Mercury ${status.health.version || "(unknown)"} on this computer is older than this app. Update it here: the app installs the matching version and restarts Mercury.`
+                  : `Mercury ${status.health.version || "(unknown)"} on ${connection.name} is older than this app. Update Mercury on that computer to a version with the desktop API.`}
             </p>
+            {status.compat.reason === "runtime-too-old" && connection.kind === "local" && <UpdateLocal onUpdated={retry} />}
             <div className="flex gap-2">
-              <Button variant="primary" onClick={() => void desktop.openExternal(connection.baseUrl)}>Open in browser</Button>
+              <Button variant="outline" onClick={() => void desktop.openExternal(connection.baseUrl)}>Open in browser</Button>
               <Button variant="outline" onClick={onSwitch}>Use another connection</Button>
             </div>
           </>
@@ -97,6 +101,30 @@ function Connected({ connection, onSwitch }: { connection: Connection; onSwitch:
         </button>
       </div>
     </Centered>
+  );
+}
+
+/** An older Mercury on this computer: install the matching one and restart onto it. */
+function UpdateLocal({ onUpdated }: { onUpdated: () => void }) {
+  const [step, setStep] = useState<"idle" | "download" | "restart" | "wait" | "failed">("idle");
+  const [detail, setDetail] = useState("");
+  async function update() {
+    setDetail("");
+    try {
+      await updateLocalRuntime(setStep);
+      onUpdated();
+    } catch (err) {
+      setStep("failed");
+      setDetail(err instanceof Error ? err.message : String(err));
+    }
+  }
+  const busy = step === "download" || step === "restart" || step === "wait";
+  const label = step === "download" ? "Downloading Mercury…" : step === "restart" ? "Restarting Mercury…" : step === "wait" ? "Waiting for Mercury…" : "Update Mercury";
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <Button variant="primary" loading={busy} onClick={() => void update()}>{label}</Button>
+      {step === "failed" && <p className="max-w-[380px] text-xs text-red">{detail}</p>}
+    </div>
   );
 }
 
