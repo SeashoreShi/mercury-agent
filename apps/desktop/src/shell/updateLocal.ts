@@ -20,8 +20,7 @@ export async function updateLocalRuntime(onStep?: (step: "download" | "restart" 
 /** Stop the running Mercury (whichever copy) and start the installed one. */
 export async function restartLocalRuntime(onStep?: (step: "restart" | "wait") => void): Promise<void> {
   onStep?.("restart");
-  const service = await desktop.runMercury(["service", "status"]).catch(() => null);
-  if (service && /service installed/i.test(service.stdout) && !/not installed/i.test(service.stdout)) {
+  if (await hasLoginService()) {
     // A login service runs Mercury and would bring the old copy straight
     // back: install it again from the new copy, which points it there and
     // restarts it.
@@ -46,6 +45,24 @@ export async function restartLocalRuntime(onStep?: (step: "restart" | "wait") =>
     }
     await new Promise((r) => setTimeout(r, 1000));
   }
+}
+
+/**
+ * Is Mercury set to start at login? `mercury service status` says "not
+ * installed" (or "not supported") when it isn't; otherwise it prints the
+ * platform's own report (launchd, systemd, Task Scheduler), so anything
+ * else means there is one.
+ */
+export async function hasLoginService(): Promise<boolean> {
+  const out = await desktop.runMercury(["service", "status"]).catch(() => null);
+  return serviceInstalledFrom(out);
+}
+
+export function serviceInstalledFrom(out: { code: number; stdout: string; stderr: string } | null): boolean {
+  if (!out || out.code !== 0) return false;
+  const text = `${out.stdout}\n${out.stderr}`;
+  if (!text.trim()) return false;
+  return !/not installed|not supported|could not get service status/i.test(text);
 }
 
 /** Does a running Mercury on this port predate the desktop API? */
