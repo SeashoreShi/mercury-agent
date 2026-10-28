@@ -12,6 +12,7 @@ import { useTheme } from "~/app/theme";
 import { cx } from "~/lib/cx";
 import { LOOSE, themeColors } from "./MindMap";
 import { ZoomPanel, zoomKeys } from "./ZoomPanel";
+import { shortLabel, useNoteHoverCard } from "./NoteHoverCard";
 
 /**
  * The mind map: Obsidian's graph view for the second brain. Every note is a dot,
@@ -119,6 +120,9 @@ export function NoteWeb({ visible, onSelect, selectedId }: { visible: boolean; o
   selectedRef.current = selectedId;
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  const themeNames = useRef(new Map<string, string>());
+  themeNames.current = new Map((data?.themes ?? []).map((t) => [t.id, t.label]));
+  const hoverCard = useNoteHoverCard(graph, host);
 
   useEffect(() => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* per-device nicety only */ } }, [settings]);
   const set = <K extends keyof WebSettings>(k: K, v: WebSettings[K]) => setSettings((s) => ({ ...s, [k]: v }));
@@ -168,7 +172,12 @@ export function NoteWeb({ visible, onSelect, selectedId }: { visible: boolean; o
         .nodePointerAreaPaint((n, color, ctx) => { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(n.x ?? 0, n.y ?? 0, radius(n) + 3, 0, 2 * Math.PI); ctx.fill(); })
         .onRenderFramePre(() => { labelsDrawn.current = []; })
         .onZoom(({ k }) => setZoomPct(Math.round(k * 100)))
-        .onNodeHover((n) => { hover.current = n ?? null; el.style.cursor = n ? "pointer" : "grab"; })
+        .onRenderFramePost(() => hoverCard.place())
+        .onNodeHover((n) => {
+          hover.current = n ?? null;
+          el.style.cursor = n ? "pointer" : "grab";
+          hoverCard.hover(n ?? null, n ? { text: n.label, label: themeNames.current.get(n.theme), color: n.color } : null);
+        })
         .onNodeClick((n) => { onSelectRef.current({ id: n.id, kind: "memory" }); })
         .onBackgroundClick(() => onSelectRef.current(null))
         .onNodeDragEnd((n) => { n.fx = n.x; n.fy = n.y; savePin(n); });
@@ -242,6 +251,7 @@ export function NoteWeb({ visible, onSelect, selectedId }: { visible: boolean; o
   return (
     <div className="relative h-full w-full overflow-hidden">
       <div ref={host} className="absolute inset-0" style={{ cursor: "grab" }} />
+      {hoverCard.card}
 
       <div className="pointer-events-none absolute left-4 right-4 top-3 flex flex-wrap items-center gap-2">
         <div className="pointer-events-auto flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface/85 px-2 backdrop-blur">
@@ -384,7 +394,7 @@ export function NoteWeb({ visible, onSelect, selectedId }: { visible: boolean; o
     if (alpha > 0.02 && !dim) {
       const size = 10.5 / scale;
       ctx.font = `${lit ? 500 : 400} ${size}px "Geist Variable", system-ui, sans-serif`;
-      const text = n.label.length > 48 ? `${n.label.slice(0, 47)}…` : n.label;
+      const text = shortLabel(n.label);
       const w = ctx.measureText(text).width;
       const ty = y + r + 2 / scale;
       if (lit ? (labelsDrawn.current.push([x - w / 2, ty, w, size]), true) : claim(x - w / 2, ty, w, size)) {

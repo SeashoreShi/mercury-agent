@@ -12,6 +12,7 @@ import { Tooltip } from "~/components/ui/Tooltip";
 import { useTheme } from "~/app/theme";
 import { cx } from "~/lib/cx";
 import { ZoomPanel, zoomKeys } from "./ZoomPanel";
+import { shortLabel, useNoteHoverCard } from "./NoteHoverCard";
 
 /**
  * Everything Mercury knows, as a mind map: You → themes → sub-themes →
@@ -149,6 +150,7 @@ type Mode = "map" | "outline";
 export function MindMap({ visible, onSelect, selectedId }: { visible: boolean; onSelect: (node: { id: string; kind: "memory" } | null) => void; selectedId: string | null }) {
   const host = useRef<HTMLDivElement>(null);
   const graph = useRef<ForceGraph<MapNode, MapLink> | null>(null);
+  const hoverCard = useNoteHoverCard(graph, host);
   const [data, setData] = useState<BrainMap | null>(null);
   const [archive, setArchive] = useState(false);
   const [showLinks, setShowLinks] = useState(false);
@@ -230,7 +232,12 @@ export function MindMap({ visible, onSelect, selectedId }: { visible: boolean; o
         .onRenderFramePre(() => { labelsDrawn.current = []; })
         .onRenderFramePost((ctx, scale) => drawRelated(ctx, scale))
         .onZoom(({ k }) => setZoomPct(Math.round(k * 100)))
-        .onNodeHover((n) => { hover.current = n ?? null; el.style.cursor = n ? "pointer" : "grab"; })
+        .onRenderFramePost(() => hoverCard.place())
+        .onNodeHover((n) => {
+          hover.current = n ?? null;
+          el.style.cursor = n ? "pointer" : "grab";
+          hoverCard.hover(n?.kind === "note" ? n : null, n?.kind === "note" ? { text: n.label, label: byId.current.get(n.theme)?.label, color: n.color } : null);
+        })
         .onNodeClick((n) => {
           if (n.kind === "note") { onSelectRef.current({ id: n.id, kind: "memory" }); return; }
           if (n.kind === "you") { setFocus(null); g.zoomToFit(600, 60); return; }
@@ -335,6 +342,7 @@ export function MindMap({ visible, onSelect, selectedId }: { visible: boolean; o
   return (
     <div className="relative h-full w-full overflow-hidden">
       <div ref={host} className={cx("absolute inset-0", mode !== "map" && "invisible")} style={{ cursor: "grab" }} />
+      {mode === "map" && hoverCard.card}
       {mode === "outline" && data && <Outline data={data} selectedId={selectedId} onSelect={(id) => onSelect({ id, kind: "memory" })} find={find} />}
 
       <div className="pointer-events-none absolute left-4 right-4 top-3 flex flex-wrap items-center gap-2">
@@ -441,7 +449,7 @@ export function MindMap({ visible, onSelect, selectedId }: { visible: boolean; o
     }
     ctx.globalAlpha = 1;
     // Name the related notes of the one under the pointer.
-    if (focusNote) for (const [b] of (related.current.get(focusNote.id) ?? []).slice(0, 6)) { const nb = byId.current.get(b); if (nb) noteLabel(nb, ctx, scale, true); }
+    if (focusNote) for (const [b] of (related.current.get(focusNote.id) ?? []).slice(0, 4)) { const nb = byId.current.get(b); if (nb) noteLabel(nb, ctx, scale, true); }
   }
 
   function claim(x: number, y: number, w: number, h: number): boolean {
@@ -454,7 +462,7 @@ export function MindMap({ visible, onSelect, selectedId }: { visible: boolean; o
     const x = n.x ?? 0;
     const y = n.y ?? 0;
     const size = 10.5 / scale;
-    const text = truncate(n.label, 64);
+    const text = shortLabel(n.label);
     ctx.font = `400 ${size}px "Geist Variable", system-ui, sans-serif`;
     const w = ctx.measureText(text).width;
     // Outward along the node's ray, flipped on the left so it never reads upside down.
@@ -644,10 +652,6 @@ function radius(n: MapNode): number {
   if (n.kind === "theme") return 6 + Math.min(9, Math.sqrt(n.size) * 0.9);
   if (n.kind === "sub") return 3.5 + Math.min(5, Math.sqrt(n.size) * 0.7);
   return 2.2 + Math.min(1.6, n.size * 1.6);
-}
-
-function truncate(s: string, n: number): string {
-  return s.length > n ? `${s.slice(0, n - 1)}…` : s;
 }
 
 function readPins(): Record<string, [number, number]> {

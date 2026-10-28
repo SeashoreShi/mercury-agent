@@ -11,6 +11,7 @@ import { Tooltip } from "~/components/ui/Tooltip";
 import { useTheme } from "~/app/theme";
 import { cx } from "~/lib/cx";
 import { ZoomPanel, zoomKeys } from "./ZoomPanel";
+import { shortLabel, useNoteHoverCard } from "./NoteHoverCard";
 
 /**
  * The brain as a living graph, Obsidian-style.
@@ -61,6 +62,7 @@ type Show = "all" | "people" | "memories";
 export function BrainGraph({ visible, onSelect, selectedId }: { visible: boolean; onSelect: (node: { id: string; kind: SelectableKind } | null) => void; selectedId: string | null }) {
   const host = useRef<HTMLDivElement>(null);
   const graph = useRef<ForceGraph<GraphNode, GraphLink> | null>(null);
+  const hoverCard = useNoteHoverCard(graph, host);
   const [data, setData] = useState<BrainGraphData | null>(null);
   const [limit, setLimit] = useState(300);
   const [show, setShow] = useState<Show>("all");
@@ -131,9 +133,12 @@ export function BrainGraph({ visible, onSelect, selectedId }: { visible: boolean
         .nodePointerAreaPaint((node, color, ctx) => { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(node.x ?? 0, node.y ?? 0, radius(node) + 4, 0, 2 * Math.PI); ctx.fill(); })
         .onRenderFramePre(() => { labelsDrawn.current = []; })
         .onZoom(({ k }) => setZoomPct(Math.round(k * 100)))
+        .onRenderFramePost(() => hoverCard.place())
         .onNodeHover((node) => {
           hover.current = node ?? null;
           el.style.cursor = node ? "pointer" : "grab";
+          const memory = node?.kind === "memory" ? node : null;
+          hoverCard.hover(memory, memory ? { text: memory.label, label: memory.type } : null);
         })
         .onNodeClick((node) => {
           if (node.kind === "hub") { g.centerAt(node.x, node.y, 500); g.zoom(Math.max(g.zoom(), 1.6), 500); return; }
@@ -237,6 +242,7 @@ export function BrainGraph({ visible, onSelect, selectedId }: { visible: boolean
   return (
     <div className="relative h-full w-full overflow-hidden">
       <div ref={host} className="absolute inset-0" style={{ cursor: "grab" }} />
+      {hoverCard.card}
 
       <div className="pointer-events-none absolute left-4 right-4 top-3 flex flex-wrap items-center gap-2">
         <div className="pointer-events-auto"><Segmented value={show} onChange={setShow} options={[{ value: "all", label: "Everything" }, { value: "people", label: "People" }, { value: "memories", label: "Memories" }]} /></div>
@@ -370,7 +376,7 @@ export function BrainGraph({ visible, onSelect, selectedId }: { visible: boolean
       const px = n.kind === "memory" ? 10.5 : n.kind === "hub" || n.kind === "you" ? 12.5 : 12;
       const size = px / scale;
       ctx.font = `${n.kind === "memory" ? 400 : 600} ${size}px "Geist Variable", system-ui, sans-serif`;
-      const text = n.kind === "memory" ? truncate(n.label, 54) : n.label;
+      const text = n.kind === "memory" ? shortLabel(n.label) : n.label;
       const w = ctx.measureText(text).width;
       const ty = y + r + 2 / scale;
       const free = lit || n.kind === "you" ? (labelsDrawn.current.push([x - w / 2, ty, w, size]), true) : claim(x - w / 2, ty, w, size);
@@ -460,10 +466,6 @@ function buildAdjacency(links: GraphLink[]): Map<string, Set<string>> {
   const add = (a: string, b: string) => { let s = m.get(a); if (!s) { s = new Set(); m.set(a, s); } s.add(b); };
   for (const l of links) { const s = endId(l.source); const t = endId(l.target); add(s, t); add(t, s); }
   return m;
-}
-
-function truncate(s: string, n: number): string {
-  return s.length > n ? `${s.slice(0, n - 1)}…` : s;
 }
 
 // ── placement: random start, pins kept for the session ─────────────────────
