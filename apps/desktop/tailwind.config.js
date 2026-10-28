@@ -21,6 +21,7 @@ export default {
       accent: "rgb(var(--accent) / <alpha-value>)",
       "on-accent": "rgb(var(--on-accent) / <alpha-value>)",
       cyan: "rgb(var(--cyan) / <alpha-value>)",
+      blue: "rgb(var(--blue) / <alpha-value>)",
       amber: "rgb(var(--amber) / <alpha-value>)",
       red: "rgb(var(--red) / <alpha-value>)",
       white: "#ffffff",

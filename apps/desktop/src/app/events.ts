@@ -13,6 +13,7 @@ import type { BotActivityEvent, ChatMessage, CodeMode, PendingPrompt } from "~/a
 import { useBots, useChat, useRuntimeState, type AgentState } from "./store";
 import { conversations, useCodeSessions, type ConversationStore, type Surface } from "./conversation";
 import type { ArtifactRef } from "~/api/artifacts";
+import { useNotify } from "./notify/store";
 
 export function useRuntimeEvents(enabled: boolean): void {
   const chatId = conversations.chat((s) => s.activeId);
@@ -229,6 +230,17 @@ export async function openThread(surface: Surface, id: string | null): Promise<v
     return;
   }
   store.getState().setLoading(true);
+  useNotify.getState().seen(id);
+  // Prompts still waiting here (asked while you were elsewhere, perhaps from a notification).
+  void http.get<{ prompts?: Array<Record<string, unknown>> }>(`/api/chat/pending?sessionId=${encodeURIComponent(id)}`)
+    .then((r) => {
+      if (store.getState().activeId !== id) return;
+      for (const p of r.prompts ?? []) {
+        const kind = p.type === "choice_prompt" ? "choice" : p.type === "permission_continue" ? "continue" : "permission";
+        store.getState().addPrompt(toPrompt(kind, p, String(p.prompt ?? p.question ?? "")));
+      }
+    })
+    .catch(() => { /* older Mercury */ });
   // The plan Mercury was working through in this conversation, if any.
   void http.get<{ plan: { steps: Array<{ label: string; status: "pending" | "active" | "done" }>; updatedAt: number } | null }>(`/api/chat/plan?sessionId=${encodeURIComponent(id)}`)
     .then((r) => { if (store.getState().activeId === id && r.plan?.steps?.length) store.getState().setPlan(r.plan); })

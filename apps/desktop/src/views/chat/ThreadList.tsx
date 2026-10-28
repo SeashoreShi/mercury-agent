@@ -4,6 +4,7 @@ import { cx } from "~/lib/cx";
 import * as api from "~/api/mercury";
 import type { ChatThread } from "~/api/types";
 import { refreshThreads } from "~/app/events";
+import { useNotify } from "~/app/notify/store";
 
 const PAGE = 40;
 
@@ -23,6 +24,8 @@ export function ThreadList({ threads, activeId, onOpen, onNew, newLabel, searchL
   /** Shown above the sessions (e.g. the live Optimus voice session). */
   pinned?: React.ReactNode;
 }) {
+  const unread = useNotify((s) => s.unread);
+  const waiting = useNotify((s) => s.waiting);
   const [limit, setLimit] = useState(PAGE);
   const [query, setQuery] = useState("");
   const sentinel = useRef<HTMLDivElement>(null);
@@ -76,7 +79,12 @@ export function ThreadList({ threads, activeId, onOpen, onNew, newLabel, searchL
             {list.map((t) => (
               <div key={t.id} className={cx("group flex items-center rounded-lg", activeId === t.id ? "bg-ink/[0.07]" : "hover:bg-ink/[0.05]")}>
                 <button onClick={() => onOpen(t.id)} className="min-w-0 flex-1 px-3 py-2.5 text-left text-base" title={t.title || "Untitled"}>
-                  <span className={cx("block truncate", activeId === t.id ? "text-ink" : "text-ink2 group-hover:text-ink")}>{(t.title || "Untitled").replace(/^Code · /, "")}</span>
+                  <span className="flex items-center gap-2">
+                    <span className={cx("min-w-0 flex-1 truncate", activeId === t.id ? "text-ink" : unread[t.id] ? "font-medium text-ink" : "text-ink2 group-hover:text-ink")}>{(t.title || "Untitled").replace(/^Code · /, "")}</span>
+                    {t.id in waiting
+                      ? <span className="h-2 w-2 shrink-0 rounded-full bg-amber" aria-label="Waiting for you" title="Waiting for your answer" />
+                      : unread[t.id] && activeId !== t.id ? <span className="h-2 w-2 shrink-0 rounded-full bg-blue" aria-label="New" title="Something new" /> : null}
+                  </span>
                   {renderMeta?.(t)}
                 </button>
                 <button onClick={() => void remove(t)} className="mr-1 hidden rounded p-1 text-ink4 hover:text-red group-hover:block" aria-label="Delete thread">

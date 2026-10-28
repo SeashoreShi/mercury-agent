@@ -1,10 +1,12 @@
 import { Bot, Brain, Code2, MessageSquare, Puzzle, Settings, Sparkles, Layers } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { cx } from "~/lib/cx";
 import { useRuntimeState, useUi, type View } from "~/app/store";
 import { Mark } from "~/components/Logo";
 import { LABELS } from "~/components/indicators/StateOrb";
 import { Tooltip } from "~/components/ui/Tooltip";
+import { useNotify } from "~/app/notify/store";
+import { useCodeSessions } from "~/app/conversation";
 
 const ITEMS: Array<{ view: View; label: string; icon: typeof MessageSquare; key: string }> = [
   { view: "chat", label: "Chat", icon: MessageSquare, key: "1" },
@@ -27,6 +29,17 @@ export function Rail({ connectionName }: { connectionName: string }) {
   const setView = useUi((s) => s.setView);
   const agent = useRuntimeState((s) => s.agent);
   const prompts = useRuntimeState((s) => s.prompts.length);
+  const unread = useNotify((s) => s.unread);
+  const waiting = useNotify((s) => s.waiting);
+  const codeIds = useCodeSessions((s) => s.sessions);
+  const dots = useMemo(() => {
+    const code = new Set(codeIds.map((c) => c.id));
+    const of = (ids: string[], surface: "chat" | "code") => ids.filter((id) => code.has(id) === (surface === "code")).length;
+    return {
+      chat: { waiting: of(Object.keys(waiting), "chat"), unread: of(Object.keys(unread), "chat") },
+      code: { waiting: of(Object.keys(waiting), "code"), unread: of(Object.keys(unread), "code") },
+    };
+  }, [unread, waiting, codeIds]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -56,7 +69,13 @@ export function Rail({ connectionName }: { connectionName: string }) {
               className={cx("relative flex h-9 w-9 items-center justify-center rounded-md transition-colors", view === v ? "bg-ink/[0.08] text-ink" : "text-ink3 hover:bg-ink/[0.05] hover:text-ink")}
             >
               <Icon size={18} strokeWidth={1.75} />
-              {v === "chat" && prompts > 0 && <span className="absolute right-1.5 top-1.5 block h-1.5 w-1.5 rounded-full bg-amber" aria-label={`${prompts} waiting`} />}
+              {(v === "chat" || v === "code") && (() => {
+                const d = dots[v];
+                const wait = d.waiting + (v === "chat" ? prompts : 0);
+                if (wait > 0) return <span className="absolute right-1.5 top-1.5 block h-1.5 w-1.5 rounded-full bg-amber" aria-label={`${wait} waiting for you`} />;
+                if (d.unread > 0) return <span className="absolute right-1.5 top-1.5 block h-1.5 w-1.5 rounded-full bg-blue" aria-label={`${d.unread} with something new`} />;
+                return null;
+              })()}
             </button>
           </Tooltip>
         ))}

@@ -21,6 +21,8 @@ import { ArtifactsView } from "~/views/artifacts/ArtifactsView";
 import { ErrorBoundary } from "~/components/ErrorBoundary";
 import { CloudBanner } from "~/views/settings/Cloud";
 import { CallLayer } from "~/views/call/Call";
+import { useNotifications } from "~/app/notify/notify";
+import { Alerts } from "~/components/Alerts";
 
 registerBuiltinStatusItems();
 
@@ -33,6 +35,7 @@ registerBuiltinStatusItems();
 export function Workspace({ connection, health, onSwitchConnection }: { connection: Connection; health: HealthInfo; onSwitchConnection: () => void }) {
   const view = useUi((s) => s.view);
   useRuntimeEvents(true);
+  useNotifications(true);
   usePulsePolling(connection.id);
   useVoiceFeed(connection.id);
 
@@ -63,6 +66,7 @@ export function Workspace({ connection, health, onSwitchConnection }: { connecti
       </div>
       <StatusBar />
       <CallLayer />
+      <Alerts />
     </div>
   );
 }
