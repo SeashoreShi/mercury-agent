@@ -1,12 +1,12 @@
 import { Bot, Brain, Code2, MessageSquare, Puzzle, Settings, Sparkles, Layers } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import { cx } from "~/lib/cx";
-import { useRuntimeState, useUi, type View } from "~/app/store";
+import { useChat, useRuntimeState, useUi, type View } from "~/app/store";
 import { Mark } from "~/components/Logo";
 import { LABELS } from "~/components/indicators/StateOrb";
 import { Tooltip } from "~/components/ui/Tooltip";
 import { useNotify } from "~/app/notify/store";
-import { useCodeSessions } from "~/app/conversation";
+import { listOf, useCodeSessions } from "~/app/conversation";
 
 const ITEMS: Array<{ view: View; label: string; icon: typeof MessageSquare; key: string }> = [
   { view: "chat", label: "Chat", icon: MessageSquare, key: "1" },
@@ -32,14 +32,17 @@ export function Rail({ connectionName }: { connectionName: string }) {
   const unread = useNotify((s) => s.unread);
   const waiting = useNotify((s) => s.waiting);
   const codeIds = useCodeSessions((s) => s.sessions);
+  const threads = useChat((s) => s.threads);
+  // Count only conversations that are in that list, so every dot here has a dot to find there.
   const dots = useMemo(() => {
     const code = new Set(codeIds.map((c) => c.id));
-    const of = (ids: string[], surface: "chat" | "code") => ids.filter((id) => code.has(id) === (surface === "code")).length;
+    const where = new Map(threads.map((t) => [t.id, listOf(t, code)]));
+    const of = (ids: string[], surface: "chat" | "code") => ids.filter((id) => where.get(id) === surface).length;
     return {
       chat: { waiting: of(Object.keys(waiting), "chat"), unread: of(Object.keys(unread), "chat") },
       code: { waiting: of(Object.keys(waiting), "code"), unread: of(Object.keys(unread), "code") },
     };
-  }, [unread, waiting, codeIds]);
+  }, [unread, waiting, codeIds, threads]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

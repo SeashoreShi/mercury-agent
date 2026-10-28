@@ -211,6 +211,7 @@ export async function refreshThreads(): Promise<void> {
   try {
     const { threads } = await api.chat.threads();
     useChat.getState().setThreads(threads);
+    useNotify.getState().keepOnly(new Set(threads.map((t) => t.id)));
   } catch { /* offline: keep what we have */ }
 }
 

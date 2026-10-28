@@ -94,6 +94,11 @@ export function useConversationStore(): ConversationStore {
   return useContext(ConversationContext);
 }
 
+/** The list a conversation shows in: Code's (a Code session) or Chat's. */
+export function listOf(thread: { id: string; title?: string | null }, codeIds: Set<string>): Surface {
+  return codeIds.has(thread.id) || (thread.title ?? "").startsWith("Code · ") ? "code" : "chat";
+}
+
 /* ── Code sessions: which runtime sessions belong to Code, and their folder ── */
 
 export interface CodeSession {

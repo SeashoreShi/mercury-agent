@@ -72,6 +72,11 @@ export function ThreadList({ threads, activeId, onOpen, onNew, newLabel, searchL
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {pinned}
+        {threads.some((t) => unread[t.id] && t.id !== activeId) && (
+          <div className="flex justify-end px-3 pb-1">
+            <button onClick={() => { const seen = useNotify.getState().seen; for (const t of threads) if (unread[t.id]) seen(t.id); }} className="text-xs text-ink4 hover:text-ink">Mark all as read</button>
+          </div>
+        )}
         {filtered.length === 0 && <p className="px-3 pt-2 text-base text-ink4">{query ? "Nothing matches." : "No sessions yet."}</p>}
         {groups.map(([day, list]) => (
           <div key={day} className="mb-5">

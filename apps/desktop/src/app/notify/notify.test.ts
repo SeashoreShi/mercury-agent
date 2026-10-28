@@ -71,4 +71,23 @@ describe("notifications", () => {
     useNotify.getState().seen("x");
     expect(useNotify.getState().unread.x).toBeUndefined();
   });
+
+  it("forgets marks on deleted conversations", () => {
+    useNotify.getState().markUnread("kept");
+    useNotify.getState().markUnread("deleted");
+    useNotify.getState().markWaiting("gone", "p1");
+    useNotify.getState().keepOnly(new Set(["kept"]));
+    expect(Object.keys(useNotify.getState().unread)).toEqual(["kept"]);
+    expect(useNotify.getState().waiting).toEqual({});
+  });
+});
+
+describe("which list a conversation shows in", async () => {
+  const { listOf } = await import("../conversation");
+  it("Code sessions and Code-titled ones go to Code, the rest to Chat", () => {
+    const code = new Set(["c1"]);
+    expect(listOf({ id: "c1", title: "Fix the build" }, code)).toBe("code");
+    expect(listOf({ id: "x", title: "Code · refactor" }, code)).toBe("code");
+    expect(listOf({ id: "y", title: "Srinagar news" }, code)).toBe("chat");
+  });
 });

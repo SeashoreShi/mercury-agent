@@ -263,7 +263,7 @@ export class WebChannel extends BaseChannel {
         this.pendingInteractions.delete(id);
         this.broadcast({
           type: interaction.kind === 'choice' ? 'choice_resolved' : 'permission_resolved',
-          data: { id, status: 'expired', targetId: interaction.targetId },
+          data: { id, status: 'expired', targetId: interaction.sessionId ?? interaction.targetId },
         });
         resolve(fallback);
       }, waitMs);

@@ -1,7 +1,7 @@
 import { PanelLeft } from "lucide-react";
 import { useEffect } from "react";
 import { useChat, useUi } from "~/app/store";
-import { conversations, ConversationContext, useCodeSessions } from "~/app/conversation";
+import { conversations, ConversationContext, useCodeSessions, listOf } from "~/app/conversation";
 import { refreshThreads, openThread } from "~/app/events";
 import { Button } from "~/components/ui/Button";
 import { Tooltip } from "~/components/ui/Tooltip";
@@ -64,7 +64,7 @@ export function ChatView() {
       <div className="flex h-full min-h-0">
         {sidebar && (
           <ThreadList
-            threads={threads.filter((t) => !codeSet.has(t.id) && !(t.title ?? "").startsWith("Code · "))}
+            threads={threads.filter((t) => listOf(t, codeSet) === "chat")}
             activeId={activeId}
             onOpen={(id) => { setVoiceOpen(false); void openThread("chat", id); }}
             onNew={() => { setVoiceOpen(false); void openThread("chat", null); }}

@@ -61,6 +61,8 @@ interface NotifyState {
   markWaiting(id: string, promptId: string): void;
   clearWaiting(id: string, promptId?: string): void;
   seen(id: string): void;
+  /** Forget marks on conversations that no longer exist (deleted). */
+  keepOnly(ids: Set<string>): void;
   pushAlert(a: Omit<Alert, "id">): void;
   dismiss(id: string): void;
 }
@@ -87,6 +89,17 @@ export const useNotify = create<NotifyState>((set) => ({
     delete unread[id];
     write(SEEN_KEY, unread);
     return { unread };
+  }),
+  keepOnly: (ids) => set((s) => {
+    const gone = Object.keys(s.unread).filter((id) => !ids.has(id));
+    const goneWaiting = Object.keys(s.waiting).filter((id) => !ids.has(id));
+    if (!gone.length && !goneWaiting.length) return s;
+    const unread = { ...s.unread };
+    for (const id of gone) delete unread[id];
+    const waiting = { ...s.waiting };
+    for (const id of goneWaiting) delete waiting[id];
+    write(SEEN_KEY, unread);
+    return { unread, waiting };
   }),
   pushAlert: (a) => set((s) => ({ alerts: [...s.alerts.filter((x) => !(a.sessionId && x.sessionId === a.sessionId && x.kind === a.kind)), { ...a, id: crypto.randomUUID() }].slice(-3) })),
   dismiss: (id) => set((s) => ({ alerts: s.alerts.filter((a) => a.id !== id) })),

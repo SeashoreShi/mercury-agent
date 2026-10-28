@@ -148,7 +148,10 @@ export function handleActivity(e: ActivityEvent): void {
     case "done":
     case "failed": {
       n.clearWaiting(e.sessionId);
-      if (!onScreen(e.sessionId)) n.markUnread(e.sessionId);
+      if (!onScreen(e.sessionId)) {
+        n.markUnread(e.sessionId);
+        void import("../events").then(({ refreshThreads }) => refreshThreads());
+      }
       if (watching(e.sessionId) || !worthTelling(e.kind, e.ms ?? 0, n.prefs)) return;
       if (e.kind === "done") tell("done", e.sessionId, `Done: ${label(e)}`, e.preview || "Mercury finished.");
       else tell("failed", e.sessionId, `Stopped with an error: ${label(e)}`, e.message || "Something went wrong.");
