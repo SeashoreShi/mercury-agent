@@ -131,6 +131,41 @@ chat.get('/api/chat/plan', (c) => {
   return c.json({ plan: id ? webChannel.plans.get(id) : null });
 });
 
+/**
+ * Activity across every session (started, needs you, done, failed), for
+ * notifications. Prompts asked while this is open wait for the owner.
+ */
+chat.get('/api/chat/activity', (c) => {
+  if (!webChannel) return c.json({ error: 'Web channel not initialized' }, 503);
+  const ch = webChannel;
+  if (sessions) {
+    const repo = sessions;
+    ch.setSessionTitleLookup((id) => { try { return repo.get(id)?.title ?? undefined; } catch { return undefined; } });
+  }
+  const stream = new ReadableStream({
+    start(controller) {
+      const clientId = ch.addActivityClient(controller);
+      const encoder = new TextEncoder();
+      const send = (data: string) => { try { controller.enqueue(encoder.encode(data)); } catch { /* closed */ } };
+      send(`event: connected\ndata: ${JSON.stringify({ id: clientId })}\n\n`);
+      const keepalive = setInterval(() => send(': keepalive\n\n'), 15000);
+      c.req.raw.signal.addEventListener('abort', () => {
+        clearInterval(keepalive);
+        ch.removeActivityClient(clientId);
+      });
+    },
+  });
+  return new Response(stream, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' } });
+});
+
+/** Prompts still waiting for an answer in a session (opening it shows them). */
+chat.get('/api/chat/pending', (c) => {
+  if (!webChannel) return c.json({ prompts: [] });
+  const sessionId = c.req.query('sessionId') ?? '';
+  if (!sessionId) return c.json({ prompts: [] });
+  return c.json({ prompts: webChannel.pendingFor(sessionId).map((e) => ({ type: e.type, ...e.data })) });
+});
+
 chat.get('/api/chat/events', (c) => {
   if (!webChannel) {
     return c.json({ error: 'Web channel not initialized' }, 503);
