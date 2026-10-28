@@ -70,15 +70,36 @@ export async function askPermission(): Promise<Permission> {
   try { return await Notification.requestPermission(); } catch { return "denied"; }
 }
 
+/**
+ * The Mercury icon for a Linux notification. macOS and Windows always show
+ * the sending app's own icon; Linux looks one up by name in the icon theme,
+ * which only a .deb/.rpm install provides, so hand it the file itself.
+ */
+let linuxIcon: Promise<string | undefined> | null = null;
+function notificationIcon(): Promise<string | undefined> {
+  linuxIcon ??= (async () => {
+    try {
+      const { platform } = await import("@tauri-apps/plugin-os");
+      if (platform() !== "linux") return undefined;
+      const { resolveResource } = await import("@tauri-apps/api/path");
+      return await resolveResource("notification-icon.png");
+    } catch {
+      return undefined;
+    }
+  })();
+  return linuxIcon;
+}
+
 async function systemNotify(title: string, body: string): Promise<boolean> {
   try {
     if (isTauri) {
       const { sendNotification } = await import("@tauri-apps/plugin-notification");
-      sendNotification({ title, body });
+      const icon = await notificationIcon();
+      sendNotification(icon ? { title, body, icon } : { title, body });
       return true;
     }
     if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-      const n = new Notification(title, { body, silent: true });
+      const n = new Notification(title, { body, silent: true, icon: "/notification-icon.png" });
       n.onclick = () => { window.focus(); n.close(); };
       return true;
     }

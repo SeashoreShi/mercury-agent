@@ -28,6 +28,8 @@ writeFileSync(join(OUT, "icon-square.svg"), appIcon({ shape: "square" }));
 for (const [name, px] of [["32x32.png", 32], ["64x64.png", 64], ["128x128.png", 128], ["128x128@2x.png", 256], ["icon.png", 512]]) {
   writeFileSync(join(OUT, name), square(px));
 }
+// A browser notification's image (the desktop app bundles 128x128@2x for Linux).
+writeFileSync(join(OUT, "..", "..", "public", "notification-icon.png"), square(256));
 
 // Windows Store / MSIX tiles.
 for (const px of [30, 44, 71, 89, 107, 142, 150, 284, 310]) writeFileSync(join(OUT, `Square${px}x${px}Logo.png`), square(px));
