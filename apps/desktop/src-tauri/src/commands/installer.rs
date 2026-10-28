@@ -89,8 +89,16 @@ fn client() -> Result<reqwest::Client, String> {
         .map_err(|e| e.to_string())
 }
 
+/// A build made for testers installs one named release instead of the
+/// latest stable one: `MERCURY_RUNTIME_TAG=mercury-dev-latest` at build time
+/// points it at the rolling dev pre-release.
+const PINNED_TAG: Option<&str> = option_env!("MERCURY_RUNTIME_TAG");
+
 /// `/releases/latest` answers with a redirect to `/releases/tag/vX.Y.Z`.
 async fn latest_tag() -> Result<String, String> {
+    if let Some(tag) = PINNED_TAG.map(str::trim).filter(|t| !t.is_empty()) {
+        return Ok(tag.to_string());
+    }
     let no_redirect = reqwest::Client::builder()
         .user_agent(USER_AGENT)
         .redirect(reqwest::redirect::Policy::none())
