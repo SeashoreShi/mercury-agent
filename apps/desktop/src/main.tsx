@@ -13,3 +13,5 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     {surface === "notch" ? <NotchApp /> : <App />}
   </React.StrictMode>
 );
+// The code loaded and the app started: public/boot-guard.js stands down.
+(window as Window & { __mercuryBooted?: boolean }).__mercuryBooted = true;
