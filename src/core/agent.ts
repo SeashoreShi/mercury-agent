@@ -46,7 +46,7 @@ import type { ArrowSelectOption } from '../utils/arrow-select.js';
 import { setAskUserHandler } from '../capabilities/interaction/ask-user.js';
 import { classifyResearchIntent } from './research-intent.js';
 import type { SpotifyClient } from '../spotify/client.js';
-import { normalizeGeneratedSessionTitle, SessionResolutionError, type SessionRepository } from '../sessions/index.js';
+import { fallbackSessionTitle, isThinOpening, normalizeGeneratedSessionTitle, SessionResolutionError, type SessionRepository } from '../sessions/index.js';
 import { PLAYER_CONTROLS, handlePlayerAction, formatNowPlaying } from '../spotify/ui.js';
 import { getCloudTokenStore } from '../cloud/token-store.js';
 import {
@@ -5345,14 +5345,66 @@ Is this productive iteration or a stuck loop?`,
     if (!this.generateTitle || this.titleGenerationInFlight.has(sessionId)) return;
     const session = this.sessions.get(sessionId);
     const exchange = session.messages.filter((message) => message.kind === 'message' && (message.role === 'user' || message.role === 'assistant'));
-    if (session.titleSource !== 'fallback' || exchange.length !== 2 || exchange[0].role !== 'user' || exchange[1].role !== 'assistant') return;
+    if (session.titleSource !== 'fallback' || exchange[0]?.role !== 'user') return;
+    // Name it after the first exchange, unless that opened with only "hi":
+    // then after the second, when there is something to name.
+    const at = exchange.length === 2 && !isThinOpening(exchange[0].content) ? 0 : exchange.length === 4 ? 2 : -1;
+    if (at < 0 || exchange[at].role !== 'user' || exchange[at + 1].role !== 'assistant') return;
+    const userText = at === 0 ? exchange[0].content : `${exchange[0].content}\n${exchange[2].content}`;
     this.titleGenerationInFlight.add(sessionId);
     const timer = setTimeout(() => {
-      void this.generateSessionTitle(sessionId, exchange[0].content, exchange[1].content, providerName).finally(() => {
+      void this.generateSessionTitle(sessionId, userText, exchange[at + 1].content, providerName).finally(() => {
         this.titleGenerationInFlight.delete(sessionId);
       });
     }, 0);
     timer.unref?.();
+  }
+
+  /**
+   * Fix titles made before titles were checked: a generated title that is
+   * really a reply ("I appreciate your request, but…") is written again,
+   * and fallback titles are re-cut from the first message. Renames don't
+   * count as activity, so nothing moves in the list. Runs once at start-up;
+   * fixed titles pass the check, so the next start finds nothing to do.
+   */
+  async repairSessionTitles(limit = 200): Promise<{ regenerated: number; recut: number }> {
+    let regenerated = 0;
+    let recut = 0;
+    for (const session of this.sessions.list()) {
+      const firstUser = session.messages.find((m) => m.role === 'user' && (m.kind ?? 'message') === 'message');
+      if (!firstUser) continue;
+      if (session.titleSource === 'fallback') {
+        const title = fallbackSessionTitle(firstUser.content);
+        if (title !== session.title) { this.sessions.updateTitle(session.id, title, 'fallback', { touch: false }); recut++; }
+        continue;
+      }
+      if (session.titleSource !== 'generated') continue;
+      const exchange = session.messages.filter((m) => (m.kind ?? 'message') === 'message' && (m.role === 'user' || m.role === 'assistant'));
+      const thin = isThinOpening(firstUser.content);
+      const tidy = normalizeGeneratedSessionTitle(session.title);
+      if (tidy && !(thin && /greeting|check-in|hello/i.test(tidy))) {
+        // A good title with wrappers left on ("# Heading"): tidy it, no model call.
+        if (tidy !== session.title) { this.sessions.updateTitle(session.id, tidy, 'generated', { touch: false }); recut++; }
+        continue;
+      }
+      if (regenerated >= limit) continue;
+      // A chat that opened with "hi" is named after what came next.
+      const users = exchange.filter((m) => m.role === 'user');
+      const userText = thin && users[1] ? `${firstUser.content}\n${users[1].content}` : firstUser.content;
+      const replyAfter = thin && users[1] ? users[1] : firstUser;
+      const reply = exchange.find((m) => m.role === 'assistant' && m.sequence > replyAfter.sequence);
+      let title: string | null = null;
+      if (this.generateTitle && reply) {
+        try {
+          title = normalizeGeneratedSessionTitle(await this.generateTitle({ userMessage: userText, assistantMessage: reply.content, providerName: '' }));
+        } catch { /* fall back below */ }
+      }
+      if (title) this.sessions.updateTitle(session.id, title, 'generated', { touch: false });
+      else this.sessions.updateTitle(session.id, fallbackSessionTitle(firstUser.content), 'fallback', { touch: false });
+      regenerated++;
+    }
+    if (regenerated || recut) logger.info({ regenerated, recut }, 'Repaired session titles');
+    return { regenerated, recut };
   }
 
   private async generateSessionTitle(sessionId: string, userMessage: string, assistantMessage: string, providerName: string): Promise<void> {

@@ -78,6 +78,7 @@ import { SignalChannel } from './channels/signal.js';
 import { DiscordChannel } from './channels/discord.js';
 import { WebChannel } from './channels/web.js';
 import { TokenBudget } from './utils/tokens.js';
+import { TITLE_SYSTEM_PROMPT, titlePrompt } from './sessions/title.js';
 import { CapabilityRegistry } from './capabilities/registry.js';
 import { SkillLoader } from './skills/loader.js';
 import { registerSkillsCommand } from './skills/cli.js';
@@ -2700,10 +2701,7 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
     config, providers, identity, shortTerm, longTerm, episodic, userMemory, channels, tokenBudget, capabilities, scheduler, sessions,
     async ({ userMessage, assistantMessage, providerName }) => {
       const provider = providers.get(providerName) ?? providers.getDefault();
-      const result = await provider.generateText(
-        `User: ${userMessage.slice(0, 1500)}\nAssistant: ${assistantMessage.slice(0, 1500)}`,
-        'Create a concise 3-7 word title for this conversation. Return only the title with no quotes, markdown, prefix, or punctuation.',
-      );
+      const result = await provider.generateText(titlePrompt(userMessage, assistantMessage), TITLE_SYSTEM_PROMPT);
       return result.text;
     },
   );
@@ -3510,6 +3508,11 @@ async function runAgent(isDaemon: boolean = false): Promise<void> {
   setWebStop(() => agent.stopAllWork('stopped'));
   setWebSessionBusy((sessionId) => agent.isBusyWith(sessionId));
   setWebBudgetControls({ config: () => config, tokens: () => tokenBudget, saver: () => agent.saverMode });
+  // Titles made before they were checked: fix them once, quietly, after start-up.
+  if (!daemonOwnsRuntime) {
+    const titleRepair = setTimeout(() => { void agent.repairSessionTitles().catch(() => {}); }, 20_000);
+    titleRepair.unref?.();
+  }
   setWebCurrentProvider(() => agent.getCurrentProvider());
   // Live bottom bar for attached terminals and the dashboard: one snapshot,
   // pushed on every model switch and checked every 2 s for anything else.
