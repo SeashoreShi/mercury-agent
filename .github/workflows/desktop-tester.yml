@@ -2,12 +2,18 @@ name: Desktop tester build
 
 # An unsigned Linux build of Mercury Desktop for testers, pinned to the
 # rolling dev runtime (mercury-dev-latest): "Install Mercury here" installs
-# that release, not the latest stable. Runs on pushes to the desktop branch
-# that touch the app; nothing is published, the bundles are run artifacts.
+# that release, not the latest stable. Runs on pushes to main and on pull
+# requests that touch the app; nothing is published, the bundles are run
+# artifacts.
 
 on:
   push:
-    branches: [feat/desktop-app]
+    branches: [main]
+    paths:
+      - 'apps/desktop/**'
+      - '.github/workflows/desktop-tester.yml'
+  pull_request:
+    branches: [main]
     paths:
       - 'apps/desktop/**'
       - '.github/workflows/desktop-tester.yml'
