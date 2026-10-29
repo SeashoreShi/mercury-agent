@@ -1,5 +1,7 @@
+import { ArrowDown } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { PlanCard } from "./PlanCard";
+import { jumpLabel, useFollowBottom } from "./follow";
 import { cx } from "~/lib/cx";
 import { useConversation, useConversationStore } from "~/app/conversation";
 import { answerPrompt } from "~/app/events";
@@ -29,11 +31,26 @@ export function Conversation({ header, empty, composer }: { header: ReactNode; e
   const live = useConversation((s) => s.live);
   const stopping = useConversation((s) => s.stopping);
   const scroller = useRef<HTMLDivElement>(null);
-  const stickToBottom = useRef(true);
+  const content = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(PAGE);
   const prepend = useRef<{ height: number; top: number } | null>(null);
+  const follow = useFollowBottom(scroller, content, activeId);
+  const busy = !!streaming || stopping || agent === "thinking" || agent === "working" || agent === "streaming";
 
-  useEffect(() => { setVisible(PAGE); stickToBottom.current = true; }, [activeId]);
+  // While the reader is up the page: count what arrived, and notice the reply ending.
+  const [away, setAway] = useState<{ since: number; wasBusy: boolean } | null>(null);
+  useEffect(() => {
+    setAway(follow.following ? null : (a) => a ?? { since: messages.length, wasBusy: busy });
+  }, [follow.following]); // eslint-disable-line react-hooks/exhaustive-deps
+  const unseen = away ? messages.slice(away.since).filter((m) => m.role !== "user").length : 0;
+  const finished = !!away?.wasBusy && !busy;
+
+  // Sending a message follows again: you want to see the answer.
+  const lastId = messages[messages.length - 1]?.id;
+  const lastRole = messages[messages.length - 1]?.role;
+  useEffect(() => { if (lastRole === "user") follow.jump(false); }, [lastId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { setVisible(PAGE); }, [activeId]);
   const shown = messages.length > visible ? messages.slice(messages.length - visible) : messages;
   // Only your last message can be undone.
   const lastYours = [...messages].reverse().find((m) => m.role === "user")?.id;
@@ -51,12 +68,6 @@ export function Conversation({ header, empty, composer }: { header: ReactNode; e
     prepend.current = { height: el.scrollHeight, top: el.scrollTop };
     setVisible((v) => v + PAGE);
   }
-  useEffect(() => {
-    const el = scroller.current;
-    if (!el || !stickToBottom.current) return;
-    el.scrollTop = el.scrollHeight;
-  }, [messages, streaming, prompts.length, loading, live]);
-
   const isEmpty = !activeId && messages.length === 0 && !streaming;
 
   return (
@@ -66,20 +77,22 @@ export function Conversation({ header, empty, composer }: { header: ReactNode; e
         <StateLabel state={agent} detail={step?.tool ? `${step.tool}${step.total ? ` ${step.current}/${step.total}` : ""}` : undefined} />
       </header>
 
+      <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={scroller}
+        tabIndex={-1}
         onScroll={(e) => {
           const el = e.currentTarget;
-          stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          follow.onScroll();
           if (el.scrollTop < 160 && hiddenCount > 0 && !prepend.current) loadEarlier();
         }}
-        className={cx("min-h-0 flex-1 overflow-y-auto overflow-x-hidden", isEmpty && "flex flex-col")}
+        className={cx("min-h-0 flex-1 overflow-y-auto overflow-x-hidden outline-none", isEmpty && "flex flex-col")}
       >
         {/* Centred with auto margins, not justify-center: when the start screen
             is taller than the window, justify-center pushes its top under the
             header where it can't be scrolled to. Auto margins collapse instead. */}
         {isEmpty ? <div className="m-auto flex w-full justify-center py-8">{empty}</div> : (
-          <div className="mx-auto flex w-full min-w-0 max-w-[780px] flex-col gap-7 px-8 py-8 [&>*]:min-w-0">
+          <div ref={content} className="mx-auto flex w-full min-w-0 max-w-[780px] flex-col gap-7 px-8 py-8 [&>*]:min-w-0">
             {loading && messages.length === 0 && <ThinkingDots label="Loading" />}
             {hiddenCount > 0 && (
               <button onClick={loadEarlier} className="self-center rounded-full border border-line px-3 py-1 text-xs text-ink3 hover:text-ink">
@@ -100,6 +113,19 @@ export function Conversation({ header, empty, composer }: { header: ReactNode; e
             ))}
           </div>
         )}
+      </div>
+      {!follow.following && !isEmpty && (
+        <button
+          onClick={() => follow.jump()}
+          className="absolute bottom-4 left-1/2 flex h-8 -translate-x-1/2 items-center gap-2 rounded-full border border-line bg-surface px-3.5 text-xs font-medium text-ink2 shadow-md transition-colors hover:border-line-strong hover:text-ink"
+          aria-label="Jump to the latest message"
+        >
+          {busy && unseen === 0 ? <span className="h-1.5 w-1.5 animate-dot-pulse rounded-full bg-accent" aria-hidden="true" /> : null}
+          {unseen > 0 && <span className="h-1.5 w-1.5 rounded-full bg-blue" aria-hidden="true" />}
+          {jumpLabel({ busy, unseen, finished })}
+          <ArrowDown size={13} aria-hidden="true" />
+        </button>
+      )}
       </div>
 
       <PlanCard surface={composer.surface} />
