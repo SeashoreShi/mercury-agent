@@ -1,8 +1,8 @@
-import { PanelLeft } from "lucide-react";
-import { useEffect } from "react";
+import { Bookmark, BookmarkCheck, PanelLeft } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useChat, useUi } from "~/app/store";
 import { conversations, ConversationContext, useCodeSessions, listOf } from "~/app/conversation";
-import { refreshThreads, openThread } from "~/app/events";
+import { refreshThreads, openThread, setThreadSaved } from "~/app/events";
 import { Button } from "~/components/ui/Button";
 import { Tooltip } from "~/components/ui/Tooltip";
 import { Mark } from "~/components/Logo";
@@ -49,15 +49,28 @@ export function ChatView() {
     return () => { setOnCallTurn(null); if (timer) clearTimeout(timer); };
   }, []);
 
+  // Saved chats are a bookmark, not a section: the list shows them only on ⌘⇧S.
+  const [savedOnly, setSavedOnly] = useState(false);
+  const saved = !!threads.find((t) => t.id === activeId)?.savedAt;
+  const toggleSaved = () => { if (activeId) void setThreadSaved(activeId, !saved).catch(() => {}); };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (view !== "chat") return;
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n" && !e.shiftKey) { e.preventDefault(); void openThread("chat", null); }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") { e.preventDefault(); toggleSidebar(); }
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === "n" && !e.shiftKey) { e.preventDefault(); void openThread("chat", null); }
+      if (mod && e.key.toLowerCase() === "b") { e.preventDefault(); toggleSidebar(); }
+      if (mod && e.key.toLowerCase() === "s" && !e.shiftKey) { e.preventDefault(); toggleSaved(); }
+      if (mod && e.key.toLowerCase() === "s" && e.shiftKey) {
+        e.preventDefault();
+        if (!useUi.getState().sidebar) toggleSidebar();
+        setSavedOnly((v) => !v);
+      }
+      if (e.key === "Escape" && savedOnly) setSavedOnly(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleSidebar, view]);
+  }, [toggleSidebar, view, savedOnly, activeId, saved]);
 
   return (
     <ConversationContext.Provider value={conversations.chat}>
@@ -69,7 +82,9 @@ export function ChatView() {
             onOpen={(id) => { setVoiceOpen(false); void openThread("chat", id); }}
             onNew={() => { setVoiceOpen(false); void openThread("chat", null); }}
             newLabel="New chat"
-            searchLabel="Search chats"
+            searchLabel={savedOnly ? "Search saved" : "Search chats"}
+            savedOnly={savedOnly}
+            onLeaveSaved={() => setSavedOnly(false)}
             pinned={(voice.active || voice.turns.length > 0) && (
               <button onClick={() => {
                   // A live call opens the call screen; a finished one opens its chat.
@@ -96,6 +111,13 @@ export function ChatView() {
                 <Button variant="ghost" size="sm" icon onClick={toggleSidebar} aria-label="Toggle sessions"><PanelLeft size={16} /></Button>
               </Tooltip>
               <span className="truncate text-base font-medium text-ink">{title}</span>
+              {activeId && (
+                <Tooltip label={saved ? "Saved. Click to unsave" : "Save for later"} shortcut="⌘S" side="bottom">
+                  <Button variant="ghost" size="sm" icon onClick={toggleSaved} aria-label={saved ? "Unsave this chat" : "Save this chat"} aria-pressed={saved}>
+                    {saved ? <BookmarkCheck size={16} className="text-accent" /> : <Bookmark size={16} />}
+                  </Button>
+                </Tooltip>
+              )}
             </>
           }
           empty={

@@ -35,6 +35,8 @@ export interface ChatThread {
   updatedAt?: string;
   messages: ChatMessage[];
   createdAt: string;
+  /** Saved to come back to later (unset = not saved). */
+  savedAt?: string;
 }
 
 export interface ToolStep {

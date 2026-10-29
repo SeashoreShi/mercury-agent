@@ -38,6 +38,7 @@ function toThread(session: ReturnType<SessionRepository['get']>, includeMessages
     title: session.title,
     // A desktop voice call saved as a thread (voice-calls.ts).
     voiceCall: typeof session.messages[0]?.metadata?.voiceCall === 'string',
+    ...(session.savedAt ? { savedAt: new Date(session.savedAt).toISOString() } : {}),
     createdAt: new Date(session.createdAt).toISOString(),
     updatedAt: new Date(session.updatedAt).toISOString(),
     messages: includeMessages ? session.messages.map((message) => ({
@@ -732,6 +733,20 @@ chat.post('/api/chat/threads/:id/delete', async (c) => {
     return c.json({ deleted: true, sessionId: deleted.id, syncPending, artifactsRemoved });
   } catch {
     return c.json({ deleted: false, error: 'Thread not found' }, 404);
+  }
+});
+
+/** Save a thread to come back to later, or unsave it: { saved: boolean }. */
+chat.post('/api/chat/threads/:id/save', async (c) => {
+  const id = c.req.param('id');
+  if (!sessions) return c.json({ error: 'Session repository not initialized' }, 503);
+  const body: { saved?: unknown } = await c.req.json<{ saved?: unknown }>().catch(() => ({}));
+  if (typeof body.saved !== 'boolean') return c.json({ error: 'Send { saved: true } or { saved: false }.' }, 400);
+  try {
+    const session = sessions.setSaved(id, body.saved);
+    return c.json({ id: session.id, saved: !!session.savedAt, savedAt: session.savedAt ? new Date(session.savedAt).toISOString() : null });
+  } catch {
+    return c.json({ error: 'Thread not found' }, 404);
   }
 });
 

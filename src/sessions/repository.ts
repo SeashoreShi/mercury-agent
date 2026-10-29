@@ -250,6 +250,24 @@ export class SessionRepository {
     return this.get(session.id);
   }
 
+  /**
+   * Save a session to come back to, or unsave it. Saving is a bookmark, not
+   * activity: the session keeps its place in the list (updatedAt stays).
+   */
+  setSaved(ref: string, saved: boolean): Session {
+    const session = this.get(ref);
+    if (!!session.savedAt === saved) return session;
+    if (saved) session.savedAt = Date.now();
+    else delete session.savedAt;
+    session.revision++;
+    this.writeSession(session);
+    const index = this.index.sessions.findIndex((entry) => entry.id === session.id);
+    if (index >= 0) this.index.sessions[index] = this.toIndexEntry(session);
+    this.writeIndex();
+    this.notifyMutation();
+    return this.get(session.id);
+  }
+
   archive(ref: string): Session {
     const session = this.get(ref);
     if (session.status !== 'archived') {

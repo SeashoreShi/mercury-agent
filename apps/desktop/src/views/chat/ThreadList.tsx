@@ -1,9 +1,9 @@
-import { Search, SquarePen, Trash2 } from "lucide-react";
+import { Bookmark, BookmarkMinus, Search, SquarePen, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cx } from "~/lib/cx";
 import * as api from "~/api/mercury";
 import type { ChatThread } from "~/api/types";
-import { refreshThreads } from "~/app/events";
+import { refreshThreads, setThreadSaved } from "~/app/events";
 import { useNotify } from "~/app/notify/store";
 
 const PAGE = 40;
@@ -13,7 +13,7 @@ const PAGE = 40;
  * New and search on top. Renders a page at a time and adds the next page as
  * the list scrolls.
  */
-export function ThreadList({ threads, activeId, onOpen, onNew, newLabel, searchLabel, renderMeta, pinned }: {
+export function ThreadList({ threads, activeId, onOpen, onNew, newLabel, searchLabel, renderMeta, pinned, savedOnly = false, onLeaveSaved }: {
   threads: ChatThread[];
   activeId: string | null;
   onOpen: (id: string) => void;
@@ -23,6 +23,9 @@ export function ThreadList({ threads, activeId, onOpen, onNew, newLabel, searchL
   renderMeta?: (t: ChatThread) => React.ReactNode;
   /** Shown above the sessions (e.g. the live Optimus voice session). */
   pinned?: React.ReactNode;
+  /** Only the saved threads, newest save first (⌘⇧S); the list doesn't mark them otherwise. */
+  savedOnly?: boolean;
+  onLeaveSaved?: () => void;
 }) {
   const unread = useNotify((s) => s.unread);
   const waiting = useNotify((s) => s.waiting);
@@ -32,11 +35,13 @@ export function ThreadList({ threads, activeId, onOpen, onNew, newLabel, searchL
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const sorted = [...threads].sort((a, b) => stamp(b).localeCompare(stamp(a)));
+    const sorted = savedOnly
+      ? threads.filter((t) => t.savedAt).sort((a, b) => (b.savedAt ?? "").localeCompare(a.savedAt ?? ""))
+      : [...threads].sort((a, b) => stamp(b).localeCompare(stamp(a)));
     return q ? sorted.filter((t) => (t.title || t.alias || "").toLowerCase().includes(q)) : sorted;
-  }, [threads, query]);
+  }, [threads, query, savedOnly]);
   const page = filtered.slice(0, limit);
-  const groups = useMemo(() => groupByDay(page), [page]);
+  const groups = useMemo<Array<[string, ChatThread[]]>>(() => (savedOnly ? (page.length ? [["Saved", page]] : []) : groupByDay(page)), [page, savedOnly]);
 
   useEffect(() => { setLimit(PAGE); }, [query]);
   useEffect(() => {
@@ -71,16 +76,25 @@ export function ThreadList({ threads, activeId, onOpen, onNew, newLabel, searchL
         </label>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-        {pinned}
-        {threads.some((t) => unread[t.id] && t.id !== activeId) && (
+        {savedOnly && (
+          <div className="mb-2 flex items-center gap-2 rounded-lg bg-ink/[0.04] px-3 py-2">
+            <Bookmark size={15} className="shrink-0 text-ink3" aria-hidden="true" />
+            <span className="flex-1 text-sm font-medium text-ink">Saved</span>
+            <button onClick={onLeaveSaved} className="flex items-center gap-1 text-xs text-ink4 hover:text-ink" aria-label="Back to all chats">
+              <X size={13} /> <kbd className="font-mono">esc</kbd>
+            </button>
+          </div>
+        )}
+        {!savedOnly && pinned}
+        {!savedOnly && threads.some((t) => unread[t.id] && t.id !== activeId) && (
           <div className="flex justify-end px-3 pb-1">
             <button onClick={() => { const seen = useNotify.getState().seen; for (const t of threads) if (unread[t.id]) seen(t.id); }} className="text-xs text-ink4 hover:text-ink">Mark all as read</button>
           </div>
         )}
-        {filtered.length === 0 && <p className="px-3 pt-2 text-base text-ink4">{query ? "Nothing matches." : "No sessions yet."}</p>}
+        {filtered.length === 0 && <p className="px-3 pt-2 text-base text-ink4">{query ? "Nothing matches." : savedOnly ? "Nothing saved yet. Open a chat and press ⌘S, or the bookmark at the top." : "No sessions yet."}</p>}
         {groups.map(([day, list]) => (
           <div key={day} className="mb-5">
-            <div className="px-3 pb-1.5 text-xs font-medium uppercase tracking-wider text-ink4">{day}</div>
+            {!savedOnly && <div className="px-3 pb-1.5 text-xs font-medium uppercase tracking-wider text-ink4">{day}</div>}
             {list.map((t) => (
               <div key={t.id} className={cx("group flex items-center rounded-lg", activeId === t.id ? "bg-ink/[0.07]" : "hover:bg-ink/[0.05]")}>
                 <button onClick={() => onOpen(t.id)} className="min-w-0 flex-1 px-3 py-2.5 text-left text-base" title={t.title || "Untitled"}>
@@ -92,9 +106,15 @@ export function ThreadList({ threads, activeId, onOpen, onNew, newLabel, searchL
                   </span>
                   {renderMeta?.(t)}
                 </button>
-                <button onClick={() => void remove(t)} className="mr-1 hidden rounded p-1 text-ink4 hover:text-red group-hover:block" aria-label="Delete thread">
-                  <Trash2 size={15} />
-                </button>
+                {savedOnly ? (
+                  <button onClick={() => void setThreadSaved(t.id, false).catch(() => {})} className="mr-1 hidden rounded p-1 text-ink4 hover:text-ink group-hover:block" aria-label="Unsave" title="Unsave">
+                    <BookmarkMinus size={15} />
+                  </button>
+                ) : (
+                  <button onClick={() => void remove(t)} className="mr-1 hidden rounded p-1 text-ink4 hover:text-red group-hover:block" aria-label="Delete thread">
+                    <Trash2 size={15} />
+                  </button>
+                )}
               </div>
             ))}
           </div>

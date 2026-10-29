@@ -215,6 +215,26 @@ export async function refreshThreads(): Promise<void> {
   } catch { /* offline: keep what we have */ }
 }
 
+/**
+ * Save a thread to come back to, or unsave it. Shows at once; puts it back
+ * if the runtime says no.
+ */
+export async function setThreadSaved(threadId: string, saved: boolean): Promise<void> {
+  const mark = (savedAt: string | undefined) => {
+    const { threads, setThreads } = useChat.getState();
+    setThreads(threads.map((t) => (t.id === threadId ? { ...t, savedAt } : t)));
+  };
+  const before = useChat.getState().threads.find((t) => t.id === threadId)?.savedAt;
+  mark(saved ? new Date().toISOString() : undefined);
+  try {
+    const res = await api.chat.save(threadId, saved);
+    mark(res.savedAt ?? undefined);
+  } catch (err) {
+    mark(before);
+    throw err;
+  }
+}
+
 export async function refreshBots(): Promise<void> {
   try {
     const { bots, available } = await api.bots.list();
