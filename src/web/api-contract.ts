@@ -46,6 +46,8 @@ export const API_FEATURES: readonly string[] = Object.freeze([
   'channels',          // GET /api/channels, POST :type/check, PUT :type, POST :type/access, POST/GET signal/link
   'transcribe',        // GET/POST /api/transcribe — dictation: raw audio in, text out
   'speak',             // GET/POST /api/speak — read aloud: text in, MP3 out
+  'budget',            // GET/PUT /api/budget — daily cap, Token Saver, bot caps; saves apply live
+  'threads.save',      // POST /api/chat/threads/:id/save { saved } — thread.savedAt
   'cloud.signin',      // GET /api/cloud/status, POST/GET/DELETE /api/cloud/signin (browser pairing from any client)       // POST /api/voice/check { vendor, key?, endpoint? }
   'brain.map',         // GET /api/brain/map[?archive=1] — themes, sub-themes, notes, related links
 ]);

@@ -1,4 +1,4 @@
-import { Activity, Boxes, Info, MessagesSquare, Mic, PanelBottom, Palette, Power, Server, Smartphone, UserRound, Bell } from "lucide-react";
+import { Activity, Info, MessagesSquare, Palette, Server, Sparkles, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cx } from "~/lib/cx";
 import { useUi } from "~/app/store";
@@ -17,71 +17,101 @@ import { Analytics } from "./Analytics";
 import { Profile } from "./Profile";
 import { ModelsSettings } from "./Models";
 import { VoiceSettings } from "./Voice";
+import { BudgetsSettings } from "./Budgets";
 import { ChannelsSettings } from "./Channels";
 import { isVisible, orderedIds, useContributions, type ContributionArea } from "~/extensions/registry";
 import { NotificationsSettings } from "./Notifications";
 
 /**
- * Settings: a section list on the left, one section on the right. Most-used
- * first (Appearance), plain labels, every control explains itself in one line.
+ * Settings: a short list of groups on the left; a group with more than one
+ * page shows them as tabs across the top. Everything about the models
+ * (which ones, voice, what they may spend) sits together under AI.
  */
-type Section = "profile" | "models" | "voice" | "notifications" | "channels" | "appearance" | "statusbar" | "analytics" | "connections" | "devices" | "startup" | "about";
+type Section = "profile" | "models" | "voice" | "budgets" | "channels" | "notifications" | "appearance" | "statusbar" | "startup" | "connections" | "devices" | "analytics" | "about";
 
-const SECTIONS: Array<{ id: Section; label: string; icon: typeof Palette }> = [
-  { id: "profile", label: "Profile", icon: UserRound },
-  { id: "models", label: "Models", icon: Boxes },
-  { id: "voice", label: "Voice", icon: Mic },
-  { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "channels", label: "Channels", icon: MessagesSquare },
-  { id: "appearance", label: "Appearance", icon: Palette },
-  { id: "statusbar", label: "Status bar", icon: PanelBottom },
-  { id: "analytics", label: "Analytics", icon: Activity },
-  { id: "connections", label: "Connections", icon: Server },
-  { id: "devices", label: "Paired devices", icon: Smartphone },
-  { id: "startup", label: "Start-up", icon: Power },
-  { id: "about", label: "About", icon: Info },
+type GroupId = "profile" | "ai" | "messaging" | "app" | "connections" | "analytics" | "about";
+
+const GROUPS: Array<{ id: GroupId; label: string; icon: typeof Palette; tabs: Array<{ id: Section; label: string }> }> = [
+  { id: "profile", label: "Profile", icon: UserRound, tabs: [{ id: "profile", label: "Profile" }] },
+  { id: "ai", label: "AI", icon: Sparkles, tabs: [{ id: "models", label: "Models" }, { id: "voice", label: "Voice" }, { id: "budgets", label: "Budgets" }] },
+  { id: "messaging", label: "Messaging", icon: MessagesSquare, tabs: [{ id: "channels", label: "Channels" }, { id: "notifications", label: "Notifications" }] },
+  { id: "app", label: "App", icon: Palette, tabs: [{ id: "appearance", label: "Appearance" }, { id: "statusbar", label: "Status bar" }, { id: "startup", label: "Start-up" }] },
+  { id: "connections", label: "Connections", icon: Server, tabs: [{ id: "connections", label: "Runtimes" }, { id: "devices", label: "Paired devices" }] },
+  { id: "analytics", label: "Activity", icon: Activity, tabs: [{ id: "analytics", label: "Activity" }] },
+  { id: "about", label: "About", icon: Info, tabs: [{ id: "about", label: "About" }] },
 ];
+
+/** The group a page lives in. */
+function groupOf(section: string) {
+  return GROUPS.find((g) => g.tabs.some((t) => t.id === section));
+}
 
 export function SettingsView({ connection, health, onSwitchConnection }: { connection: Connection; health: HealthInfo; onSwitchConnection: () => void }) {
   const [section, setSection] = useState<Section>("appearance");
-  // Another screen asked for a section (the Cloud banner opens Models).
+  // The page last open in each group, so coming back lands where you were.
+  const [lastTab, setLastTab] = useState<Partial<Record<GroupId, Section>>>({});
+  const group = groupOf(section) ?? GROUPS[0];
+  const wide = section === "analytics" ? "max-w-[960px]" : "max-w-[680px]";
+  const go = (next: Section) => {
+    const g = groupOf(next);
+    if (g) setLastTab((m) => ({ ...m, [g.id]: next }));
+    setSection(next);
+  };
+  // Another screen asked for a page (the Cloud banner opens Models).
   const wanted = useUi((s) => s.settingsSection);
   const clearWanted = useUi((s) => s.clearSettingsSection);
   useEffect(() => {
-    if (wanted && SECTIONS.some((x) => x.id === wanted)) setSection(wanted as Section);
+    if (wanted && groupOf(wanted)) go(wanted as Section);
     if (wanted) clearWanted();
   }, [wanted, clearWanted]);
   return (
     <div className="flex h-full min-h-0">
-      <aside className="flex w-[240px] shrink-0 flex-col border-r border-line bg-soft">
+      <aside className="flex w-[220px] shrink-0 flex-col border-r border-line bg-soft">
         <div className="flex h-[52px] shrink-0 items-center px-5" data-tauri-drag-region>
           <span className="text-base font-semibold text-ink">Settings</span>
         </div>
-        <nav className="flex flex-col gap-0.5 px-2" aria-label="Settings sections">
-          {SECTIONS.map(({ id, label, icon: Icon }) => (
-            <button key={id} onClick={() => setSection(id)} aria-current={section === id ? "page" : undefined}
-              className={cx("flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-base", section === id ? "bg-ink/[0.07] text-ink" : "text-ink2 hover:bg-ink/[0.05] hover:text-ink")}>
+        <nav className="flex flex-col gap-0.5 px-2" aria-label="Settings">
+          {GROUPS.map(({ id, label, icon: Icon, tabs }) => (
+            <button key={id} onClick={() => go(lastTab[id] ?? tabs[0].id)} aria-current={group.id === id ? "page" : undefined}
+              className={cx("flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-base", group.id === id ? "bg-ink/[0.07] text-ink" : "text-ink2 hover:bg-ink/[0.05] hover:text-ink")}>
               <Icon size={17} strokeWidth={1.75} aria-hidden="true" />
               {label}
             </button>
           ))}
         </nav>
       </aside>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className={cx("mx-auto flex flex-col gap-6 px-8 py-8", section === "analytics" ? "max-w-[960px]" : "max-w-[680px]")}>
-          <h1 className="text-xl font-semibold tracking-tight text-ink">{SECTIONS.find((s) => s.id === section)?.label}</h1>
-          {section === "profile" && <Profile />}
-          {section === "models" && <ModelsSettings />}
-          {section === "voice" && <VoiceSettings onOpenModels={() => setSection("models")} />}
-          {section === "notifications" && <NotificationsSettings />}
-          {section === "channels" && <ChannelsSettings />}
-          {section === "appearance" && <Appearance />}
-          {section === "statusbar" && <StatusBarSettings />}
-          {section === "analytics" && <Analytics />}
-          {section === "connections" && <Connections current={connection} health={health} onSwitchConnection={onSwitchConnection} />}
-          {section === "devices" && <Devices current={connection} />}
-          {section === "startup" && <Startup />}
-          {section === "about" && <About health={health} onAnalytics={() => setSection("analytics")} />}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="shrink-0 border-b border-line" data-tauri-drag-region>
+          <div className={cx("mx-auto flex items-end gap-1 px-8 pt-5", wide)}>
+            <h1 className={cx("mr-5 pb-3 text-xl font-semibold tracking-tight text-ink", group.tabs.length === 1 && "mr-0")}>{group.label}</h1>
+            {group.tabs.length > 1 && (
+              <div className="flex items-end gap-1" role="tablist" aria-label={group.label}>
+                {group.tabs.map((t) => (
+                  <button key={t.id} role="tab" aria-selected={section === t.id} onClick={() => go(t.id)}
+                    className={cx("-mb-px border-b-2 px-3 pb-3 text-sm transition-colors", section === t.id ? "border-accent font-medium text-ink" : "border-transparent text-ink3 hover:text-ink")}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className={cx("mx-auto flex flex-col gap-6 px-8 py-8", wide)}>
+            {section === "profile" && <Profile />}
+            {section === "models" && <ModelsSettings />}
+            {section === "voice" && <VoiceSettings onOpenModels={() => go("models")} />}
+            {section === "budgets" && <BudgetsSettings />}
+            {section === "notifications" && <NotificationsSettings />}
+            {section === "channels" && <ChannelsSettings />}
+            {section === "appearance" && <Appearance />}
+            {section === "statusbar" && <StatusBarSettings />}
+            {section === "analytics" && <Analytics />}
+            {section === "connections" && <Connections current={connection} health={health} onSwitchConnection={onSwitchConnection} />}
+            {section === "devices" && <Devices current={connection} />}
+            {section === "startup" && <Startup />}
+            {section === "about" && <About health={health} onAnalytics={() => go("analytics")} />}
+          </div>
         </div>
       </div>
     </div>
