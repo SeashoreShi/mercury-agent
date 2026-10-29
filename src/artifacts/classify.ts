@@ -62,6 +62,11 @@ export interface ClassifyContext {
   size: number;
 }
 
+/** A path's folders and name, whichever separator it was written with (Windows takes both). */
+function segments(path: string): string[] {
+  return path.split(/[\\/]+/).filter(Boolean);
+}
+
 function inside(child: string, parent: string): boolean {
   const rel = relative(parent, child);
   return !!rel && !rel.startsWith('..') && !isAbsolute(rel);
@@ -83,7 +88,7 @@ export function classifyArtifact(path: string, ctx: ClassifyContext): ArtifactKi
   if (name.startsWith('.') || name.startsWith('~$')) return null;
   // Folder rules apply below the system temp folder, not to it ("tmp" means a project's tmp/).
   const temp = tempRoot(path);
-  const parts = (temp ? relative(temp, path) : path).split(sep);
+  const parts = segments(temp ? relative(temp, path) : path);
   if (parts.some((p) => NEVER_UNDER.has(p))) return null;
   if (inside(path, ctx.mercuryHome) && !inside(path, `${ctx.mercuryHome}${sep}artifacts`) && !inside(path, `${ctx.mercuryHome}${sep}workspace`) && !inside(path, `${ctx.mercuryHome}${sep}outputs`)) return null;
 
@@ -104,7 +109,7 @@ export function classifyArtifact(path: string, ctx: ClassifyContext): ArtifactKi
   if (ctx.surface === 'code' && inside(path, ctx.cwd)) {
     // In a project, only a written-for-you report counts: a PDF, Markdown or text
     // deliverable at the root or in a reports/research folder, named like one.
-    const rel = relative(ctx.cwd, path).split(sep);
+    const rel = segments(relative(ctx.cwd, path));
     const top = rel.length > 1 ? rel[0].toLowerCase() : '';
     if (rel.some((p, i) => i < rel.length - 1 && PROJECT_ASSET_DIRS.has(p.toLowerCase()))) return null;
     const deliverableDir = top === '' || /^(reports?|research|notes|output|outputs|artifacts|deliverables)$/.test(top);

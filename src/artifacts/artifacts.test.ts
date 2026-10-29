@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { classifyArtifact, type ClassifyContext } from './classify.js';
 import { ArtifactCollector, pathsIn } from './collector.js';
@@ -64,10 +64,17 @@ describe('what counts as an artifact', () => {
 
   it('finds paths in commands and output, quoted, escaped or relative', () => {
     const found = pathsIn('ffmpeg -i in.mov -vf scale=1280:-1 "/Users/me/Movies/My Clip.mp4" && echo saved ./out/chart.png; cat x.ts', '/Users/me', { relative: true });
-    expect(found).toContain('/Users/me/Movies/My Clip.mp4');
-    expect(found).toContain('/Users/me/out/chart.png');
+    // resolve(): on Windows these come back with the current drive in front.
+    expect(found).toContain(resolve('/Users/me/Movies/My Clip.mp4'));
+    expect(found).toContain(resolve('/Users/me/out/chart.png'));
     expect(found.some((p) => p.endsWith('x.ts'))).toBe(false);
-    expect(found).not.toContain('/out/chart.png');
+    expect(found).not.toContain(resolve('/out/chart.png'));
+  });
+
+  it.runIf(process.platform === 'win32')('finds Windows paths in command output', () => {
+    const found = pathsIn('Saved chart to C:\\Users\\me\\Desktop\\chart.png and "D:\\Videos\\My Clip.mp4"', 'C:\\Users\\me', { relative: false });
+    expect(found).toContain('C:\\Users\\me\\Desktop\\chart.png');
+    expect(found).toContain('D:\\Videos\\My Clip.mp4');
   });
 });
 

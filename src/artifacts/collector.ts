@@ -17,10 +17,10 @@ import type { Artifact, ArtifactStore } from './store.js';
  */
 
 const ARTIFACT_EXT = 'png|jpe?g|gif|webp|heic|avif|bmp|tiff|svg|mp4|mov|webm|mkv|m4v|avi|mp3|wav|m4a|ogg|flac|aac|opus|pdf|docx?|pptx?|xlsx?|odt|ods|odp|key|pages|numbers|epub|csv|md|markdown|txt';
-// An absolute path starts a token (after a space, quote, = or bracket), never mid-word ("./out/x.png" isn't "/out/x.png").
-const ABS_PATH = new RegExp(`(?<=^|[\\s'"=(:\\[])(?:~|/)(?:[^\\s'"\`<>|;,()\\[\\]{}]|\\\\ )+\\.(?:${ARTIFACT_EXT})(?=$|[\\s'"\`<>|;,()\\]\\[.:!?])`, 'gi');
-/** Quoted paths may contain spaces: "/Users/me/Movies/My Clip.mp4". */
-const QUOTED_PATH = new RegExp(`(["'])((?:~|/)[^"'\\n]+?\\.(?:${ARTIFACT_EXT}))\\1`, 'gi');
+// An absolute path (/…, ~/…, or C:\… on Windows) starts a token (after a space, quote, = or bracket), never mid-word ("./out/x.png" isn't "/out/x.png").
+const ABS_PATH = new RegExp(`(?<=^|[\\s'"=(:\\[])(?:~|/|[A-Za-z]:[\\\\/])(?:[^\\s'"\`<>|;,()\\[\\]{}]|\\\\ )+\\.(?:${ARTIFACT_EXT})(?=$|[\\s'"\`<>|;,()\\]\\[.:!?])`, 'gi');
+/** Quoted paths may contain spaces: "/Users/me/Movies/My Clip.mp4". Windows drive paths (C:\…) count too. */
+const QUOTED_PATH = new RegExp(`(["'])((?:~|/|[A-Za-z]:[\\\\/])[^"'\\n]+?\\.(?:${ARTIFACT_EXT}))\\1`, 'gi');
 const REL_PATH = new RegExp(`(?:^|[\\s'"=])((?:\\./)?[\\w@][\\w.@/-]*\\.(?:${ARTIFACT_EXT}))(?=$|[\\s'"\`;,)])`, 'gi');
 
 type How = 'sent' | 'written' | 'mentioned';
