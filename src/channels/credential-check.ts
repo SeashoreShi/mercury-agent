@@ -19,10 +19,13 @@ export interface ChannelCheck {
   field?: string;
 }
 
-async function getJson(f: Fetch, url: string, init: RequestInit = {}): Promise<{ status: number; body: any }> {
+/** A vendor's JSON answer: read field by field, nothing assumed. */
+type VendorJson = Record<string, unknown> | null;
+
+async function getJson(f: Fetch, url: string, init: RequestInit = {}): Promise<{ status: number; body: VendorJson }> {
   const res = await f(url, { ...init, signal: AbortSignal.timeout(10_000) });
-  let body: any = null;
-  try { body = await res.json(); } catch { /* not JSON */ }
+  let body: VendorJson = null;
+  try { body = (await res.json()) as VendorJson; } catch { /* not JSON */ }
   return { status: res.status, body };
 }
 

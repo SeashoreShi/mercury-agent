@@ -58,5 +58,6 @@ export function applyHeadlessSetup(config: MercuryConfig, opts: HeadlessSetupOpt
 }
 
 function cleanName(raw: string | undefined): string {
+  // eslint-disable-next-line no-control-regex -- strips control characters on purpose
   return (raw ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 64);
 }

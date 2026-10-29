@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -170,8 +170,8 @@ describe('api contract', () => {
   });
 });
 
-function makeContext(path: string, token: string, remoteAddress: string): any {
-  return {
+function makeContext(path: string, token: string, remoteAddress: string): Context {
+  const fake = {
     req: {
       url: `http://127.0.0.1:6174${path}`,
       raw: new Request(`http://127.0.0.1:6174${path}`),
@@ -181,4 +181,5 @@ function makeContext(path: string, token: string, remoteAddress: string): any {
     env: { incoming: { socket: { remoteAddress } } },
     json: (body: unknown, status = 200) => ({ body, status }),
   };
+  return fake as unknown as Context;
 }

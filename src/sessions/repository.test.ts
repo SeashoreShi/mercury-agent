@@ -181,7 +181,7 @@ describe('SessionRepository.updateTitle without touching', () => {
     const older = repo.create({ title: 'Older' });
     repo.appendMessage(older.id, { role: 'user', content: 'a', timestamp: 1_000 });
     const newer = repo.create({ title: 'Newer' });
-    repo.appendMessage(newer.id, { role: 'user', content: 'b' });
+    repo.appendMessage(newer.id, { role: 'user', content: 'b', timestamp: Date.now() + 60_000 });
     const before = repo.get(older.id).updatedAt;
     repo.updateTitle(older.id, 'Fixed Title', 'generated', { touch: false });
     expect(repo.get(older.id)).toMatchObject({ title: 'Fixed Title', titleSource: 'generated', updatedAt: before });

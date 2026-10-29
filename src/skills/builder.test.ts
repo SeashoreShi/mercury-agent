@@ -12,7 +12,7 @@ const good = {
 const provider = (...replies: string[]) => {
   const generateText = vi.fn();
   for (const r of replies) generateText.mockResolvedValueOnce({ text: r });
-  return { generateText, getModel: () => 'test-model' } as never;
+  return { p: { generateText, getModel: () => 'test-model' } as never, generateText };
 };
 
 describe('skill builder', () => {
@@ -28,17 +28,17 @@ describe('skill builder', () => {
   });
 
   it('fixes a draft that breaks the rules with one automatic retry', async () => {
-    const p = provider(JSON.stringify({ ...good, instructions: 'Do the report.' }), JSON.stringify(good));
+    const { p, generateText } = provider(JSON.stringify({ ...good, instructions: 'Do the report.' }), JSON.stringify(good));
     const r = await buildSkillDraft(p, 'a weekly sales report from my sheet', ['read_file']);
     expect(r.problem).toBeNull();
     expect(r.draft.instructions).toContain('1. Ask the owner');
-    expect((p as any).generateText).toHaveBeenCalledTimes(2);
-    expect((p as any).generateText.mock.calls[1][0]).toMatch(/Fix this: instructions are too short/);
+    expect(generateText).toHaveBeenCalledTimes(2);
+    expect(generateText.mock.calls[1][0]).toMatch(/Fix this: instructions are too short/);
   });
 
   it('asks for changes in the owner\'s words', async () => {
-    const p = provider(JSON.stringify(good));
+    const { p, generateText } = provider(JSON.stringify(good));
     await buildSkillDraft(p, 'sales report', ['read_file'], { draft: parseDraft(JSON.stringify(good), ['read_file']), feedback: 'also email it to finance' });
-    expect((p as any).generateText.mock.calls[0][0]).toContain('Change it like this: also email it to finance');
+    expect(generateText.mock.calls[0][0]).toContain('Change it like this: also email it to finance');
   });
 });

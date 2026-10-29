@@ -74,6 +74,6 @@ describe('read aloud', () => {
     setSpeakFetch(vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({ error: { message: 'bad key' } }) }) as never);
     const res = await post('Hello');
     expect(res.status).toBe(502);
-    expect((await res.json() as any).error).toMatch(/rejected the key/);
+    expect(await res.json()).toMatchObject({ error: expect.stringMatching(/rejected the key/) });
   });
 });

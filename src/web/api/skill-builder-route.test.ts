@@ -22,7 +22,7 @@ describe('skill builder routes', () => {
     const generateText = vi.fn().mockResolvedValue({ text: JSON.stringify({ ...draft, allowedTools: ['list_dir', 'made_up'] }) });
     setSkillBuilder({ provider: () => ({ generateText, getModel: () => 'm' }) as never, tools: () => ['list_dir', 'move_file'] });
     const res = await post('/api/skills/draft', { request: 'tidy my downloads folder by type' });
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as { draft: { allowedTools: string[] }; problem: string | null };
     expect(res.status).toBe(200);
     expect(body.draft.allowedTools).toEqual(['list_dir']);
     expect(body.problem).toBeNull();
@@ -37,7 +37,7 @@ describe('skill builder routes', () => {
   it('saves a reviewed draft as a self-made skill that shows up in the list', async () => {
     const res = await post('/api/skills/self-made', { draft });
     expect(res.status).toBe(200);
-    expect(((await res.json()) as any).name).toBe('tidy-downloads');
+    expect(await res.json()).toMatchObject({ name: 'tidy-downloads' });
     const list = (await (await system.request('http://127.0.0.1/api/skills')).json()) as { skills: Array<{ name: string; selfMade: boolean }> };
     expect(list.skills.find((s) => s.name === 'tidy-downloads')?.selfMade).toBe(true);
   });

@@ -44,10 +44,20 @@ const yaml = () => readFileSync(join(home, 'mercury.yaml'), 'utf-8');
 
 afterEach(() => vi.useRealTimers());
 
+interface CloudStatusBody {
+  paired: boolean;
+  chat: { ok: boolean; models?: string[]; error?: string };
+  session: string;
+  selfRecovers: boolean;
+  modelOk: boolean;
+  action: string;
+}
+interface SigninBody { status: string; error?: string; upgradeUrl?: string }
+
 describe('Mercury Cloud status', () => {
   it('chat key works but the session is gone and the model is a reranker: asks to sign in', async () => {
     setCloudTestHooks({ fetch: models(['mercury-mini', 'claude-sonnet-4.6', 'nemotron-3.5-rerank-8b:free', 'text-embedding-3-small']) });
-    const body = await (await get('/api/cloud/status?fresh=1')).json() as any;
+    const body = await (await get('/api/cloud/status?fresh=1')).json() as CloudStatusBody;
     expect(body.paired).toBe(true);
     expect(body.chat.ok).toBe(true);
     expect(body.chat.models).toEqual(['mercury-mini', 'claude-sonnet-4.6']);
@@ -60,7 +70,7 @@ describe('Mercury Cloud status', () => {
 
   it('a rejected chat key reads as signed out, not as a crash', async () => {
     setCloudTestHooks({ fetch: vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({}) } as unknown as Response) });
-    const body = await (await get('/api/cloud/status?fresh=1')).json() as any;
+    const body = await (await get('/api/cloud/status?fresh=1')).json() as CloudStatusBody;
     expect(body.chat).toMatchObject({ ok: false });
     expect(body.chat.error).toMatch(/no longer accepts/);
     expect(body.action).toBe('sign-in');
@@ -68,7 +78,7 @@ describe('Mercury Cloud status', () => {
 
   it('an unreachable Cloud says so', async () => {
     setCloudTestHooks({ fetch: vi.fn().mockRejectedValue(new Error('The operation was aborted due to timeout')) });
-    const body = await (await get('/api/cloud/status?fresh=1')).json() as any;
+    const body = await (await get('/api/cloud/status?fresh=1')).json() as CloudStatusBody;
     expect(body.chat.error).toMatch(/10 seconds/);
   });
 });
@@ -83,12 +93,12 @@ describe('Mercury Cloud sign-in from the app', () => {
       poll: vi.fn().mockReturnValue(new Promise((r) => { approve = r; })) as never,
       restart,
     });
-    const started = await (await post('/api/cloud/signin')).json() as any;
+    const started: unknown = await (await post('/api/cloud/signin')).json();
     expect(started).toMatchObject({ code: 'ABCD-1234', status: 'pending' });
-    expect((await (await get('/api/cloud/signin')).json() as any).status).toBe('pending');
+    expect(await (await get('/api/cloud/signin')).json()).toMatchObject({ status: 'pending' });
 
     approve({ jwt: 'new.jwt.token', refreshToken: 'rt-new', agentId: 'agent-1', tier: 'extended', apiKey: 'agent-key-1', accessKey: 'sk-mc-new' });
-    await vi.waitFor(async () => expect((await (await get('/api/cloud/signin')).json() as any).status).toBe('done'));
+    await vi.waitFor(async () => expect(await (await get('/api/cloud/signin')).json()).toMatchObject({ status: 'done' }));
     vi.advanceTimersByTime(400);
     expect(restart).toHaveBeenCalledOnce();
 
@@ -108,8 +118,8 @@ describe('Mercury Cloud sign-in from the app', () => {
     });
     await cloud.request('http://127.0.0.1/api/cloud/signin', { method: 'DELETE' });
     await post('/api/cloud/signin');
-    await vi.waitFor(async () => expect((await (await get('/api/cloud/signin')).json() as any).status).toBe('failed'));
-    const body = await (await get('/api/cloud/signin')).json() as any;
+    await vi.waitFor(async () => expect(await (await get('/api/cloud/signin')).json()).toMatchObject({ status: 'failed' }));
+    const body = await (await get('/api/cloud/signin')).json() as SigninBody;
     expect(body.error).toMatch(/limit/);
     expect(body.upgradeUrl).toBe('https://cloud.test/upgrade');
   });
@@ -121,7 +131,7 @@ describe('turning Mercury Cloud off, and signing out', () => {
   it("won't turn Cloud off when it's the only model", async () => {
     const res = await cloud.request('http://127.0.0.1/api/cloud/enabled', body({ enabled: false }));
     expect(res.status).toBe(409);
-    expect(((await res.json()) as any).needsOther).toBe(true);
+    expect(await res.json()).toMatchObject({ needsOther: true });
   });
 
   it('turns off (handing the default to another provider) and back on, staying signed in', async () => {
@@ -132,7 +142,7 @@ describe('turning Mercury Cloud off, and signing out', () => {
     writeFileSync(join(home, 'mercury.yaml'), YAML.stringify(doc));
     const off = await cloud.request('http://127.0.0.1/api/cloud/enabled', body({ enabled: false }));
     expect(off.status).toBe(200);
-    expect(((await off.json()) as any).default).toBe('deepseek');
+    expect(await off.json()).toMatchObject({ default: 'deepseek' });
     expect(yaml()).toMatch(/mercuryCloud:[\s\S]*?enabled: false/);
     expect(yaml()).toContain('sk-mc-new');
     const on = await cloud.request('http://127.0.0.1/api/cloud/enabled', body({ enabled: true }));
@@ -144,7 +154,7 @@ describe('turning Mercury Cloud off, and signing out', () => {
     const restart = vi.fn().mockReturnValue(true);
     setCloudTestHooks({ restart });
     const res = await cloud.request('http://127.0.0.1/api/cloud/signout', { method: 'POST' });
-    expect(((await res.json()) as any)).toMatchObject({ ok: true, restarting: true, fallback: 'deepseek', setupNext: false });
+    expect(await res.json()).toMatchObject({ ok: true, restarting: true, fallback: 'deepseek', setupNext: false });
     vi.advanceTimersByTime(400);
     expect(restart).toHaveBeenCalledOnce();
     const saved = yaml();

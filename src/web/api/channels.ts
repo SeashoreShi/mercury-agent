@@ -79,20 +79,30 @@ const masked = (v: unknown) => typeof v === 'string' && v.includes('•');
 
 // ── People, in one shape for every channel ──────────────────────────────────
 
+/** A person as each channel stores them (Telegram, Discord, Slack, Signal use different fields). */
+interface ChannelUser {
+  userId?: string | number; chatId?: string | number; phoneNumber?: string;
+  name?: string; firstName?: string; username?: string; userName?: string; displayName?: string;
+  approvedAt?: string; pairedAt?: string; pairingCode?: string; requestedAt?: string; role?: string;
+}
+type ChannelPeople = { admins: ChannelUser[]; members: ChannelUser[]; pending: ChannelUser[] };
+
 interface Person { id: string; name: string; detail?: string; role: 'admin' | 'member'; since?: string }
 interface Pending { id: string; name: string; detail?: string; code?: string; requestedAt?: string }
 
 function people(type: ExternalChannel, c: MercuryConfig['channels']) {
-  const ch = c[type] as unknown as { admins: any[]; members: any[]; pending: any[] };
-  const person = (u: any, role: 'admin' | 'member'): Person => {
-    if (type === 'telegram') return { id: String(u.userId), name: u.firstName || (u.username ? `@${u.username}` : String(u.userId)), detail: u.username ? `@${u.username}` : undefined, role, since: u.approvedAt };
-    if (type === 'signal') return { id: u.phoneNumber, name: u.name || u.phoneNumber, detail: u.name ? u.phoneNumber : undefined, role, since: u.pairedAt };
-    if (type === 'slack') return { id: u.userId, name: u.displayName || u.userName || u.userId, detail: u.userName ? `@${u.userName}` : undefined, role, since: u.approvedAt };
-    return { id: u.userId, name: u.displayName || u.username || u.userId, detail: u.username ? `@${u.username}` : undefined, role, since: u.approvedAt };
+  const ch = c[type] as unknown as ChannelPeople;
+  const person = (u: ChannelUser, role: 'admin' | 'member'): Person => {
+    const uid = String(u.userId ?? '');
+    if (type === 'telegram') return { id: uid, name: u.firstName || (u.username ? `@${u.username}` : uid), detail: u.username ? `@${u.username}` : undefined, role, since: u.approvedAt };
+    const phone = u.phoneNumber ?? '';
+    if (type === 'signal') return { id: phone, name: u.name || phone, detail: u.name ? phone : undefined, role, since: u.pairedAt };
+    if (type === 'slack') return { id: uid, name: u.displayName || u.userName || uid, detail: u.userName ? `@${u.userName}` : undefined, role, since: u.approvedAt };
+    return { id: uid, name: u.displayName || u.username || uid, detail: u.username ? `@${u.username}` : undefined, role, since: u.approvedAt };
   };
-  const pending = (u: any): Pending => {
-    const id = type === 'signal' ? u.phoneNumber : String(u.userId);
-    const name = type === 'telegram' ? (u.firstName || (u.username ? `@${u.username}` : id)) : type === 'signal' ? (u.name || u.phoneNumber) : (u.displayName || u.username || u.userName || id);
+  const pending = (u: ChannelUser): Pending => {
+    const id = type === 'signal' ? (u.phoneNumber ?? '') : String(u.userId ?? '');
+    const name = type === 'telegram' ? (u.firstName || (u.username ? `@${u.username}` : id)) : type === 'signal' ? (u.name || id) : (u.displayName || u.username || u.userName || id);
     return { id, name, detail: u.username ? `@${u.username}` : u.userName ? `@${u.userName}` : undefined, code: u.pairingCode, requestedAt: u.requestedAt };
   };
   return {
@@ -227,9 +237,9 @@ type AccessResult = { ok: true; welcome?: { target: string; text: string } } | {
 
 /** One place for every channel's access rules: approve, reject, remove, promote, demote, reset. */
 export function applyAccess(type: ExternalChannel, config: MercuryConfig, action: string, id: string, role?: 'admin' | 'member'): AccessResult {
-  const ch = config.channels[type] as unknown as { admins: any[]; members: any[]; pending: any[] };
-  const keyOf = (u: any) => String(type === 'signal' ? u.phoneNumber : u.userId);
-  const find = (list: any[]) => list.find((u) => keyOf(u) === id);
+  const ch = config.channels[type] as unknown as ChannelPeople;
+  const keyOf = (u: ChannelUser) => String(type === 'signal' ? u.phoneNumber : u.userId);
+  const find = (list: ChannelUser[]) => list.find((u) => keyOf(u) === id);
   if (action !== 'reset' && !id) return { ok: false, error: 'Who? (id is required)' };
 
   switch (action) {

@@ -19,7 +19,7 @@ describe('artifacts API', () => {
     const f = join(home, 'clip.mp4');
     writeFileSync(f, Buffer.from('0123456789abcdef'));
     const a = artifactStore().add({ threadId: 't1', path: f, kind: 'video' });
-    const list = (await (await artifacts.request('http://127.0.0.1/api/artifacts?kind=video')).json()) as any;
+    const list = (await (await artifacts.request('http://127.0.0.1/api/artifacts?kind=video')).json()) as { items: unknown[]; counts: Record<string, number> };
     expect(list.items[0]).toMatchObject({ id: a.id, name: 'clip.mp4', kind: 'video', threadExists: false });
     expect(JSON.stringify(list)).not.toContain('storedPath');
     expect(list.counts).toMatchObject({ all: 1, video: 1 });

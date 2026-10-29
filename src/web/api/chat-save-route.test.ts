@@ -21,7 +21,8 @@ function threads() {
   const older = repo.create({ title: 'Older' });
   repo.appendMessage(older.id, { role: 'user', content: 'hi', timestamp: 1_000 });
   const newer = repo.create({ title: 'Newer' });
-  repo.appendMessage(newer.id, { role: 'user', content: 'hello' });
+  // Clearly later than the first, so the order can't depend on the clock's resolution.
+  repo.appendMessage(newer.id, { role: 'user', content: 'hello', timestamp: Date.now() + 60_000 });
   return { repo, older: older.id, newer: newer.id };
 }
 

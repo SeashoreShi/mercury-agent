@@ -116,7 +116,7 @@ const tokenLimiter = createLoginLimiter();
 
 function peerAddress(c: { env?: unknown }): string {
   try {
-    return String((c.env as any)?.incoming?.socket?.remoteAddress || 'unknown');
+    return String((c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)?.incoming?.socket?.remoteAddress || 'unknown');
   } catch {
     return 'unknown';
   }
@@ -148,8 +148,8 @@ auth.post('/api/auth/token', async (c) => {
   let created;
   try {
     created = createDevice(body.deviceName, body.platform);
-  } catch (err: any) {
-    return c.json({ error: err?.message || 'Could not create device' }, 409);
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : 'Could not create device' }, 409);
   }
   return c.json({ token: created.token, device: created.device, ...apiContract() });
 });

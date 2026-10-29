@@ -26,10 +26,19 @@ import { loadConfig } from '../../utils/config.js';
 const call = (method: string, path: string, body?: unknown) => channels.request(`http://127.0.0.1${path}`, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 const yaml = () => readFileSync(join(home, 'mercury.yaml'), 'utf-8');
 
+interface ChannelRow {
+  type: string;
+  settings: Record<string, unknown>;
+  access: { admins: unknown[]; members: unknown[]; pending: unknown[] };
+}
+interface ChannelsListBody { channels: ChannelRow[] }
+interface ChannelSaveBody { identity?: string; channel: ChannelRow }
+type DiscordUser = ReturnType<typeof loadConfig>['channels']['discord']['admins'][number];
+
 describe('channels settings', () => {
   it('lists every channel with keys hidden and people in one shape', async () => {
-    const body = (await (await call('GET', '/api/channels')).json()) as any;
-    expect(body.channels.map((c: any) => c.type)).toEqual(['telegram', 'discord', 'slack', 'signal']);
+    const body = (await (await call('GET', '/api/channels')).json()) as ChannelsListBody;
+    expect(body.channels.map((c) => c.type)).toEqual(['telegram', 'discord', 'slack', 'signal']);
     const tg = body.channels[0];
     expect(tg.settings.botToken).toBe('1234••••ed00');
     expect(JSON.stringify(body)).not.toContain('savedsaved');
@@ -40,7 +49,7 @@ describe('channels settings', () => {
   it('approves a request, and refuses to leave the channel without an admin', async () => {
     const ok = await call('POST', '/api/channels/telegram/access', { action: 'approve', id: '2' });
     expect(ok.status).toBe(200);
-    expect(((await ok.json()) as any).channel.access.members).toEqual([expect.objectContaining({ id: '2' })]);
+    expect(((await ok.json()) as ChannelSaveBody).channel.access.members).toEqual([expect.objectContaining({ id: '2' })]);
     expect((await call('POST', '/api/channels/telegram/access', { action: 'remove', id: '1' })).status).toBe(409);
     expect((await call('POST', '/api/channels/telegram/access', { action: 'demote', id: '1' })).status).toBe(409);
     expect((await call('POST', '/api/channels/telegram/access', { action: 'promote', id: '2' })).status).toBe(200);
@@ -53,7 +62,7 @@ describe('channels settings', () => {
     setChannelTestHooks({ fetch: vi.fn().mockResolvedValue({ status: 401, json: async () => ({ ok: false }) }) as never });
     const bad = await call('PUT', '/api/channels/discord', { enabled: true, botToken: 'MTIz' + 'NDU2Nzg5MDEyMzQ1Njc4.GabcDe.abcdefghijklmnopqrstuvwxyz0123' });
     expect(bad.status).toBe(400);
-    expect(((await bad.json()) as any).field).toBe('botToken');
+    expect(await bad.json()).toMatchObject({ field: 'botToken' });
     expect(loadConfig().channels.discord.enabled).toBe(false);
   });
 
@@ -63,7 +72,7 @@ describe('channels settings', () => {
       .mockResolvedValueOnce({ status: 200, json: async () => ({ ok: true }) });
     setChannelTestHooks({ fetch: f as never });
     const res = await call('PUT', '/api/channels/slack', { enabled: true, botToken: 'xoxb' + '-1234567890-abcdefghijklmnopqrst', appToken: 'xapp' + '-1-A123-4567890-abcdefghijklmnop', channelId: 'C123' });
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as ChannelSaveBody;
     expect(res.status).toBe(200);
     expect(body.identity).toBe('@mercury in Cosmic');
     expect(body.channel.settings).toMatchObject({ hasBotToken: true, hasAppToken: true, channelId: 'C123' });
@@ -80,8 +89,8 @@ describe('channels settings', () => {
 
   it('Discord and Slack keep the role field in step when promoting', () => {
     const cfg = loadConfig();
-    cfg.channels.discord.admins = [{ userId: 'a', role: 'admin', approvedAt: 'x' } as any];
-    cfg.channels.discord.members = [{ userId: 'b', role: 'member', approvedAt: 'x' } as any];
+    cfg.channels.discord.admins = [{ userId: 'a', role: 'admin', approvedAt: 'x' } as DiscordUser];
+    cfg.channels.discord.members = [{ userId: 'b', role: 'member', approvedAt: 'x' } as DiscordUser];
     expect(applyAccess('discord', cfg, 'promote', 'b')).toEqual({ ok: true });
     expect(cfg.channels.discord.admins.find((u) => u.userId === 'b')?.role).toBe('admin');
   });

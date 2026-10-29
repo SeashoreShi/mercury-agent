@@ -112,6 +112,7 @@ const MAX_NAME_LENGTH = 64;
 const MAX_DEVICES = 200;
 
 export function normalizeDeviceName(name: unknown): string {
+  // eslint-disable-next-line no-control-regex -- strips control characters on purpose
   const trimmed = String(name ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim();
   return (trimmed || 'Unnamed device').slice(0, MAX_NAME_LENGTH);
 }

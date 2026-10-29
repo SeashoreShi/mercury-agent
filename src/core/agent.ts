@@ -2024,25 +2024,30 @@ export class Agent {
    * user sees which step is being implemented. Never throws.
    */
   /** Tell the owner about this turn's artifacts: a card in the apps, a line in the terminal (it can't show them). */
-  private announceArtifacts(channel: any, items: Artifact[], targetId?: string): void {
+  private announceArtifacts(channel: unknown, items: Artifact[], targetId?: string): void {
     try {
       if (channel instanceof CLIChannel) {
         const list = items.slice(0, 6).map((a) => `${a.name} (${artifactKindLabel(a.kind)}, ${formatBytes(a.size)})`).join(', ');
         const more = items.length > 6 ? ` and ${items.length - 6} more` : '';
         const where = items.length === 1 ? `\n  ${items[0].originalPath}` : '';
         channel.sendSystemNotice(`◆ ${items.length === 1 ? 'Artifact' : `${items.length} artifacts`}: ${list}${more}${where}\n  Open them in Mercury Desktop → Artifacts.`);
-      } else if (typeof channel?.sendArtifacts === 'function') {
-        channel.sendArtifacts(items.map(artifactRef), targetId);
+      } else {
+        const app = channel as { sendArtifacts?: (refs: ReturnType<typeof artifactRef>[], targetId?: string) => void } | null;
+        if (typeof app?.sendArtifacts === 'function') app.sendArtifacts(items.map(artifactRef), targetId);
       }
     } catch { /* telling about artifacts must never break a turn */ }
   }
 
-  private maybeRecordPlanProgress(channel: any, toolName: string, input: unknown, targetId?: string): void {
+  private maybeRecordPlanProgress(channel: unknown, toolName: string, input: unknown, targetId?: string): void {
     try {
       if (toolName !== 'update_plan') return;
-      if (channel instanceof CLIChannel) channel.setPlanProgress((input as any)?.steps);
-      // The apps (Chat, Code): a card above the composer, kept with the conversation.
-      else if (typeof channel?.sendPlan === 'function') channel.sendPlan((input as any)?.steps, targetId);
+      const steps = (input as { steps?: Parameters<CLIChannel['setPlanProgress']>[0] } | null)?.steps;
+      if (channel instanceof CLIChannel) channel.setPlanProgress(steps);
+      else {
+        // The apps (Chat, Code): a card above the composer, kept with the conversation.
+        const app = channel as { sendPlan?: (s: typeof steps, targetId?: string) => void } | null;
+        if (typeof app?.sendPlan === 'function') app.sendPlan(steps, targetId);
+      }
     } catch { /* checklist must never break the tool loop */ }
   }
 

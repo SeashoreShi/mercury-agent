@@ -36,7 +36,7 @@ describe('dictation', () => {
     process.env.DEEPGRAM_API_KEY = 'dg-key';
     const f = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ results: { channels: [{ alternatives: [{ transcript: 'hello from deepgram' }] }] } }) });
     setTranscribeFetch(f as never);
-    const body = await (await post()).json() as any;
+    const body: unknown = await (await post()).json();
     expect(body).toEqual({ text: 'hello from deepgram', engine: 'Deepgram' });
     expect(f.mock.calls[0][0]).toContain('api.deepgram.com/v1/listen');
     expect(f.mock.calls[0][1].headers['Content-Type']).toBe('audio/webm');
@@ -47,7 +47,7 @@ describe('dictation', () => {
     process.env.DEEPGRAM_API_KEY = 'dg-key';
     const f = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ text: ' Remind me to call Heer. ' }) });
     setTranscribeFetch(f as never);
-    const body = await (await post(audio, 'audio/mp4', '?language=en')).json() as any;
+    const body: unknown = await (await post(audio, 'audio/mp4', '?language=en')).json();
     expect(body).toEqual({ text: 'Remind me to call Heer.', engine: 'OpenAI' });
     const form = f.mock.calls[0][1].body as FormData;
     expect(form.get('model')).toBe('gpt-4o-mini-transcribe');
@@ -58,8 +58,8 @@ describe('dictation', () => {
   it('a rejected key and an empty recording read plainly', async () => {
     withOpenAI();
     setTranscribeFetch(vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({ error: { message: 'bad key' } }) }) as never);
-    expect((await (await post()).json() as any).error).toMatch(/rejected the key/);
-    expect((await (await post(new Uint8Array(10))).json() as any).error).toMatch(/Didn't catch anything/);
+    expect(await (await post()).json()).toMatchObject({ error: expect.stringMatching(/rejected the key/) });
+    expect(await (await post(new Uint8Array(10))).json()).toMatchObject({ error: expect.stringMatching(/Didn't catch anything/) });
   });
 
   it('refuses non-audio bodies', async () => {

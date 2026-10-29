@@ -852,7 +852,7 @@ function extractHumanNames(segment: string, allowSentenceStart = false): string[
   let match: RegExpExecArray | null;
   while ((match = nameRegex.exec(segment)) !== null) {
     const before = segment.slice(0, match.index);
-    const atStart = /(^|[.!?:;\n•\-–—(\[]\s*)$/.test(before);
+    const atStart = /(^|[.!?:;\n•\-–—([]\s*)$/.test(before);
     const first = match[1].split(' ')[0];
     if (atStart) firstWords.add(first);
     else midSentence.add(first);
@@ -862,7 +862,7 @@ function extractHumanNames(segment: string, allowSentenceStart = false): string[
     const name = match[1].trim();
     if (!isLikelyHumanName(name)) continue;
     const before = segment.slice(0, match.index);
-    const atStart = /(^|[.!?:;\n•\-–—(\[]\s*)$/.test(before);
+    const atStart = /(^|[.!?:;\n•\-–—([]\s*)$/.test(before);
     const single = !name.includes(' ');
     if (!allowSentenceStart && atStart && single && !midSentence.has(name)) continue;
     found.add(name);
