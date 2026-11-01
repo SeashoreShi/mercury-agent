@@ -71,6 +71,7 @@ export type ProviderName =
   | 'deepseek'
   | 'grok'
   | 'atlascloud'
+  | 'runcrate'
   | 'ollamaCloud'
   | 'ollamaLocal'
   | 'atomicChat'
@@ -115,6 +116,7 @@ export interface MercuryConfig {
     deepseek: ProviderConfig;
     grok: ProviderConfig;
     atlascloud: ProviderConfig;
+    runcrate: ProviderConfig;
     ollamaCloud: ProviderConfig;
     ollamaLocal: ProviderConfig;
     atomicChat: ProviderConfig;
@@ -395,6 +397,13 @@ export function getDefaultConfig(): MercuryConfig {
         baseUrl: getEnv('ATLASCLOUD_BASE_URL', 'https://api.atlascloud.ai/v1'),
         model: getEnv('ATLASCLOUD_MODEL', 'qwen/qwen3.5-flash'),
         enabled: getEnvBool('ATLASCLOUD_ENABLED', true),
+      },
+      runcrate: {
+        name: 'runcrate',
+        apiKey: getEnv('RUNCRATE_API_KEY', ''),
+        baseUrl: getEnv('RUNCRATE_BASE_URL', 'https://api.runcrate.ai/v1'),
+        model: getEnv('RUNCRATE_MODEL', 'deepseek-ai/DeepSeek-V4.1-Flash'),
+        enabled: getEnvBool('RUNCRATE_ENABLED', true),
       },
       ollamaCloud: {
         name: 'ollamaCloud',
@@ -815,7 +824,7 @@ export function isProviderConfigured(provider: ProviderConfig): boolean {
   if (provider.name === 'ollamaCloud') {
     return provider.apiKey.length > 0 && provider.baseUrl.length > 0;
   }
-  if (provider.name === 'atlascloud') {
+  if (provider.name === 'atlascloud' || provider.name === 'runcrate') {
     return provider.apiKey.length > 0 && provider.baseUrl.length > 0 && provider.model.length > 0;
   }
   if (provider.name === 'openaiCompat' || provider.name === 'litellm') {
